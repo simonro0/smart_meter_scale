@@ -78,18 +78,33 @@ class GeminiOcrClient(private val apiKey: String) {
                 put(textPart)
             })
         }
+        val systemInstruction = JSONObject().apply {
+            put("parts", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("text", "You are a precise OCR system for reading electronic displays. " +
+                        "Analyze the image carefully. The image pixels are already correctly oriented — " +
+                        "do not attempt to mentally re-rotate. " +
+                        "Read numbers and text with maximum accuracy. " +
+                        "Never guess or hallucinate values. " +
+                        "Return only what is explicitly visible on the display.")
+                })
+            })
+        }
         return JSONObject().apply {
+            put("systemInstruction", systemInstruction)
             put("contents", JSONArray().apply { put(content) })
             put("generationConfig", JSONObject().apply {
-                put("temperature", 0.1)
+                put("temperature", 0.0)
                 put("maxOutputTokens", 100)
+                put("mediaResolution", "MEDIA_RESOLUTION_HIGH")
             })
         }
     }
 
     private fun bitmapToBase64(bitmap: Bitmap): String {
         val output = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)
+        // High quality to preserve fine LCD digit details
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)
         return Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
     }
 }
