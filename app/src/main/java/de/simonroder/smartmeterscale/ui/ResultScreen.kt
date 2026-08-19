@@ -39,9 +39,8 @@ fun ResultScreen(
     meterValue: Double?,
     imagePath: String?,
     rawOcrText: String? = null,
-    // Called with ±90 to rotate file; ResultScreen reloads preview itself
+    capturedAt: String? = null,
     onRotateFile: (suspend (degrees: Int) -> Unit)? = null,
-    // Called after debounce to trigger OCR on current file state
     onRetryOcr: (() -> Unit)? = null,
     onBack: () -> Unit
 ) {
@@ -170,6 +169,22 @@ fun ResultScreen(
                 )
             }
 
+            if (capturedAt != null) {
+                val displayTime = remember(capturedAt) {
+                    try {
+                        val odt = java.time.OffsetDateTime.parse(capturedAt)
+                        java.time.format.DateTimeFormatter
+                            .ofPattern("dd.MM.yyyy HH:mm")
+                            .format(odt)
+                    } catch (e: Exception) { capturedAt }
+                }
+                Text(
+                    "Aufnahme: $displayTime",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+
             val hasReading = (meterType == MeterType.Scale && scaleReading != null) ||
                     (meterType != MeterType.Scale && meterValue != null)
 
@@ -183,9 +198,9 @@ fun ResultScreen(
                                     val client = HomeAssistantClient(haPrefs.toConfig())
                                     withContext(Dispatchers.IO) {
                                         if (meterType == MeterType.Scale && scaleReading != null) {
-                                            client.sendScaleReading(scaleReading, selectedUser)
+                                            client.sendScaleReading(scaleReading, selectedUser, capturedAt)
                                         } else if (meterValue != null) {
-                                            client.sendMeterReading(meterValue, meterType)
+                                            client.sendMeterReading(meterValue, meterType, capturedAt)
                                         }
                                     }
                                     sendStatus = "Erfolgreich gesendet"

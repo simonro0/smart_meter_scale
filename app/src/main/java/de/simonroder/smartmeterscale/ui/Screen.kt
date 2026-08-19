@@ -13,6 +13,7 @@ sealed class Screen {
         val scaleReading: ScaleReading?,
         val meterValue: Double?,
         val imagePath: String?,
-        val rawOcrText: String? = null
+        val rawOcrText: String? = null,
+        val capturedAt: String? = null
     ) : Screen()
 }

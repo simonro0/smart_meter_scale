@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -35,6 +36,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 
@@ -59,17 +63,21 @@ class MainActivity : ComponentActivity() {
 
         val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
             val type = pendingMeterType ?: return@rememberLauncherForActivityResult
-            uri?.let {
+            uri?.let { selectedUri ->
                 scope.launch {
-                    val imagePath = copyUriToMedia(uri)
-                    screen = Screen.Processing(type, imagePath)
-                    copyToBackup(imagePath, type)
-                    val bitmap = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(imagePath) }
-                    screen = if (bitmap != null) {
-                        processImage(bitmap, imagePath, type, mlKitProcessor, parser)
-                    } else {
-                        Screen.Result(type, null, null, imagePath, "Fehler: Bild konnte nicht geladen werden")
+                    screen = Screen.Processing(type, null)
+                    val (capturedAt, pair) = withContext(Dispatchers.IO) {
+                        val ts = readGalleryTimestamp(selectedUri) ?: millisToIso(System.currentTimeMillis())
+                        Pair(ts, copyUriToMedia(selectedUri))
                     }
+                    if (pair == null) {
+                        screen = Screen.Result(type, null, null, null, "Fehler: Bild konnte nicht geladen werden")
+                        return@launch
+                    }
+                    val (imagePath, bitmap) = pair
+                    withContext(Dispatchers.IO) { copyToBackup(imagePath, type) }
+                    val result = processImage(bitmap, imagePath, type, mlKitProcessor, parser)
+                    screen = result.copy(capturedAt = capturedAt)
                 }
             }
         }
@@ -97,11 +105,13 @@ class MainActivity : ComponentActivity() {
             is Screen.Camera -> CameraScreen(
                 onImageCaptured = { bitmap: Bitmap, rotationDegrees: Int ->
                     scope.launch {
+                        val capturedAt = millisToIso(System.currentTimeMillis())
                         val rotated = rotateBitmap(bitmap, rotationDegrees)
-                        val imagePath = saveBitmapToMedia(rotated)
+                        val imagePath = withContext(Dispatchers.IO) { saveBitmapToMedia(rotated) }
                         screen = Screen.Processing(s.meterType, imagePath)
-                        copyToBackup(imagePath, s.meterType)
-                        screen = processImage(rotated, imagePath, s.meterType, mlKitProcessor, parser)
+                        withContext(Dispatchers.IO) { copyToBackup(imagePath, s.meterType) }
+                        val result = processImage(rotated, imagePath, s.meterType, mlKitProcessor, parser)
+                        screen = result.copy(capturedAt = capturedAt)
                     }
                 },
                 onBack = { screen = Screen.Home }
@@ -130,6 +140,7 @@ class MainActivity : ComponentActivity() {
                 meterValue = s.meterValue,
                 imagePath = s.imagePath,
                 rawOcrText = s.rawOcrText,
+                capturedAt = s.capturedAt,
                 onRotateFile = { degrees ->
                     val path = s.imagePath ?: return@ResultScreen
                     withContext(Dispatchers.IO) {
@@ -143,7 +154,8 @@ class MainActivity : ComponentActivity() {
                         val path = s.imagePath ?: return@launch
                         screen = Screen.Processing(s.meterType, path)
                         val bitmap = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
-                        screen = processImage(bitmap, path, s.meterType, mlKitProcessor, parser)
+                        val result = processImage(bitmap, path, s.meterType, mlKitProcessor, parser)
+                        screen = result.copy(capturedAt = s.capturedAt)
                     }
                 },
                 onBack = { screen = Screen.Home }
@@ -236,13 +248,43 @@ class MainActivity : ComponentActivity() {
         return file.absolutePath
     }
 
-    private fun copyUriToMedia(uri: Uri): String {
-        val file = File(capturesDir(), "last_capture.jpg")
-        contentResolver.openInputStream(uri)?.use { input ->
-            FileOutputStream(file).use { input.copyTo(it) }
+    // Decodes via BitmapFactory.decodeStream so HEIC/WebP/PNG are all handled correctly,
+    // then re-encodes as JPEG. Returns null if the URI cannot be opened or decoded.
+    private fun copyUriToMedia(uri: Uri): Pair<String, Bitmap>? {
+        val bitmap = contentResolver.openInputStream(uri)?.use { stream ->
+            BitmapFactory.decodeStream(stream)
+        } ?: run {
+            Log.e("SmartMeter", "copyUriToMedia: cannot open stream for $uri")
+            return null
         }
-        return file.absolutePath
+        val file = File(capturesDir(), "last_capture.jpg")
+        try {
+            FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+        } catch (e: Exception) {
+            Log.e("SmartMeter", "copyUriToMedia: write failed: ${e.message}")
+            return null
+        }
+        Log.d("SmartMeter", "Gallery → ${file.absolutePath} (${file.length()} bytes)")
+        return Pair(file.absolutePath, bitmap)
     }
+
+    private fun readGalleryTimestamp(uri: Uri): String? = try {
+        val projection = arrayOf(MediaStore.Images.Media.DATE_TAKEN)
+        contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val millis = cursor.getLong(0)
+                if (millis > 0) millisToIso(millis) else null
+            } else null
+        }
+    } catch (e: Exception) {
+        Log.w("SmartMeter", "readGalleryTimestamp: ${e.message}")
+        null
+    }
+
+    private fun millisToIso(millis: Long): String =
+        Instant.ofEpochMilli(millis)
+            .atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
     private fun rotateBitmap(bitmap: Bitmap, degrees: Int): Bitmap {
         if (degrees == 0) return bitmap
