@@ -30,15 +30,54 @@ class GeminiOcrClient(private val apiKey: String) {
         Replace <number> with the actual value from the display. Use a dot as decimal separator.
     """.trimIndent()
 
-    private val meterPrompt = """
-        What is the meter reading shown on this display?
-        Write only the numeric value, nothing else. Use a dot as decimal separator.
+    // Gas and water meters use mechanical rolling drum displays (Rollenzählwerk).
+    // The decimal digits are typically printed on red drums.
+    private val gasPrompt = """
+        This is a gas meter with a mechanical rolling drum display.
+        Read the total gas consumption. Include ALL digit drums — both the black (whole cubic metres) and red/orange (decimal) drums.
+        Write only the numeric value in m³, nothing else. Use a dot as decimal separator.
+        Example format: 1234.567
     """.trimIndent()
+
+    private val waterPrompt = """
+        This is a water meter with a mechanical rolling drum display.
+        Read the total water consumption. Include ALL digit drums — both the black (whole cubic metres) and red (decimal/litre) drums.
+        Write only the numeric value in m³, nothing else. Use a dot as decimal separator.
+        Example format: 0567.123
+    """.trimIndent()
+
+    // Electricity meters may show HT/NT tariffs or a single total.
+    private val electricityPrompt = """
+        This is an electricity meter. Read the total energy consumption shown on the display.
+        If multiple readings are visible (e.g. HT/NT or Tariff 1/2), read the main total or the currently active tariff.
+        Write only the numeric value in kWh, nothing else. Use a dot as decimal separator.
+        Example format: 12345.6
+    """.trimIndent()
+
+    private fun systemInstructionFor(meterType: MeterType): String = when (meterType) {
+        MeterType.Gas, MeterType.Water ->
+            "You are a precise OCR system for reading mechanical meter displays with rolling digit drums. " +
+            "The image pixels are already correctly oriented — do not attempt to mentally re-rotate. " +
+            "Read every digit exactly as it appears, including decimal drums. " +
+            "Never guess or hallucinate values. Return only what is explicitly visible."
+        else ->
+            "You are a precise OCR system for reading electronic displays. " +
+            "Analyze the image carefully. The image pixels are already correctly oriented — " +
+            "do not attempt to mentally re-rotate. " +
+            "Read numbers and text with maximum accuracy. " +
+            "Never guess or hallucinate values. " +
+            "Return only what is explicitly visible on the display."
+    }
 
     fun recognizeText(bitmap: Bitmap, meterType: MeterType): String {
         val base64 = bitmapToBase64(bitmap)
-        val prompt = if (meterType == MeterType.Scale) scalePrompt else meterPrompt
-        val body = buildRequestBody(base64, prompt)
+        val prompt = when (meterType) {
+            MeterType.Scale -> scalePrompt
+            MeterType.Gas -> gasPrompt
+            MeterType.Water -> waterPrompt
+            MeterType.Electricity -> electricityPrompt
+        }
+        val body = buildRequestBody(base64, prompt, systemInstructionFor(meterType))
 
         val request = Request.Builder()
             .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=$apiKey")
@@ -64,7 +103,7 @@ class GeminiOcrClient(private val apiKey: String) {
         }
     }
 
-    private fun buildRequestBody(base64Image: String, prompt: String): JSONObject {
+    private fun buildRequestBody(base64Image: String, prompt: String, systemInstructionText: String): JSONObject {
         val imagePart = JSONObject().apply {
             put("inline_data", JSONObject().apply {
                 put("mime_type", "image/jpeg")
@@ -80,14 +119,7 @@ class GeminiOcrClient(private val apiKey: String) {
         }
         val systemInstruction = JSONObject().apply {
             put("parts", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("text", "You are a precise OCR system for reading electronic displays. " +
-                        "Analyze the image carefully. The image pixels are already correctly oriented — " +
-                        "do not attempt to mentally re-rotate. " +
-                        "Read numbers and text with maximum accuracy. " +
-                        "Never guess or hallucinate values. " +
-                        "Return only what is explicitly visible on the display.")
-                })
+                put(JSONObject().apply { put("text", systemInstructionText) })
             })
         }
         return JSONObject().apply {
