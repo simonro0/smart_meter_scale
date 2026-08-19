@@ -9,17 +9,18 @@ Taking photos of gas meters, electricity meters, and body scales is a simple way
 ## Features
 
 ### Current
-- OCR value parsing from scale display photos (weight, body fat %, body water %)
+- CameraX live viewfinder with capture button
+- Gallery picker for existing photos
+- ML Kit Text Recognition (on-device, no cloud)
+- OCR value parsing (weight, body fat %, body water %) with comma/dot handling and noise tolerance
 - Input validation with plausible range checks per measurement type
-- Home Assistant REST API integration (`/api/states`)
-- Unit tests for parsing and validation logic
+- Home Assistant REST API integration (`/api/states`) via OkHttp
+- Persistent configuration (HA base URL, long-lived access token) in SharedPreferences
+- Unit tests for parsing and validation logic (19 tests)
 
 ### Planned
-- CameraX live viewfinder with capture button
-- ML Kit Text Recognition integration (on-device, no cloud)
 - One-time display region calibration (crop to the display area for reliable reads)
 - Support for gas and electricity meter formats
-- Persistent configuration (HA base URL, long-lived access token)
 - Syncthing folder drop: save photo to a watched folder as an alternative trigger
 
 ## Architecture
@@ -41,8 +42,9 @@ Camera / Photo picker
 | Package | Contents |
 |---------|----------|
 | `data`  | `ScaleReading` data class |
-| `ocr`   | `OcrValueParser`, `ReadingValidator` |
-| `ha`    | `HomeAssistantConfig`, `HomeAssistantClient` |
+| `ocr`   | `OcrValueParser`, `ReadingValidator`, `OcrProcessor` |
+| `ha`    | `HomeAssistantConfig`, `HomeAssistantClient`, `HaPreferences` |
+| `ui`    | `HomeScreen`, `CameraScreen`, `ResultScreen`, `SettingsScreen` |
 
 ## Requirements
 

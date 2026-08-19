@@ -1,6 +1,8 @@
 package de.simonroder.smartmeterscale.ha
 
+import de.simonroder.smartmeterscale.data.MeterType
 import de.simonroder.smartmeterscale.data.ScaleReading
+import de.simonroder.smartmeterscale.data.User
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -12,10 +14,15 @@ class HomeAssistantClient(private val config: HomeAssistantConfig) {
     private val client = OkHttpClient()
     private val jsonMediaType = "application/json".toMediaType()
 
-    fun sendReading(reading: ScaleReading) {
-        postState("sensor.scale_weight", reading.weightKg.toString(), "kg", "weight")
-        reading.bodyFatPercent?.let { postState("sensor.scale_body_fat", it.toString(), "%", null) }
-        reading.bodyWaterPercent?.let { postState("sensor.scale_body_water", it.toString(), "%", null) }
+    fun sendScaleReading(reading: ScaleReading, user: User? = null) {
+        val suffix = user?.entitySuffix() ?: ""
+        postState("sensor.scale_weight$suffix", reading.weightKg.toString(), "kg", "weight")
+        reading.bodyFatPercent?.let { postState("sensor.scale_body_fat$suffix", it.toString(), "%", null) }
+        reading.bodyWaterPercent?.let { postState("sensor.scale_body_water$suffix", it.toString(), "%", null) }
+    }
+
+    fun sendMeterReading(value: Double, meterType: MeterType) {
+        postState("sensor.${meterType.entityBase}", value.toString(), meterType.unit, null)
     }
 
     private fun postState(entityId: String, state: String, unit: String, deviceClass: String?) {

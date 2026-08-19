@@ -22,4 +22,10 @@ class OcrValueParser {
 
         return ScaleReading(weight, bodyFat, bodyWater)
     }
+
+    fun parseMeterValue(ocrText: String): Double? =
+        Regex("""(\d+[.,]\d+|\d+)""").findAll(ocrText)
+            .mapNotNull { it.groupValues[1].replace(',', '.').toDoubleOrNull() }
+            .filter { it > 0 }
+            .maxOrNull()
 }
