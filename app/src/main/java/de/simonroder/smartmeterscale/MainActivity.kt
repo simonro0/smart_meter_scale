@@ -11,7 +11,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import de.simonroder.smartmeterscale.data.MeterType
 import de.simonroder.smartmeterscale.ha.HaPreferences
@@ -53,7 +60,8 @@ class MainActivity : ComponentActivity() {
             uri?.let {
                 scope.launch {
                     val imagePath = copyUriToMedia(uri)
-                    val bitmap = BitmapFactory.decodeFile(imagePath)
+                    screen = Screen.Processing(type, imagePath)
+                    val bitmap = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(imagePath) }
                     screen = if (bitmap != null) {
                         processImage(bitmap, imagePath, type, mlKitProcessor, parser)
                     } else {
@@ -88,12 +96,34 @@ class MainActivity : ComponentActivity() {
                     scope.launch {
                         val rotated = rotateBitmap(bitmap, rotationDegrees)
                         val imagePath = saveBitmapToMedia(rotated)
+                        screen = Screen.Processing(s.meterType, imagePath)
                         copyToBackupIfConfigured(imagePath, s.meterType)
                         screen = processImage(rotated, imagePath, s.meterType, mlKitProcessor, parser)
                     }
                 },
                 onBack = { screen = Screen.Home }
             )
+            is Screen.Processing -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(56.dp))
+                    Text(
+                        "${s.meterType.displayName} wird erkannt…",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    val usingGemini = HaPreferences(this@MainActivity).geminiApiKey.isNotBlank()
+                    Text(
+                        if (usingGemini) "Gemini AI analysiert das Bild" else "ML Kit läuft…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+            }
             is Screen.Result -> ResultScreen(
                 meterType = s.meterType,
                 scaleReading = s.scaleReading,
@@ -103,6 +133,7 @@ class MainActivity : ComponentActivity() {
                 onRotateAndRetry = {
                     scope.launch {
                         val path = s.imagePath ?: return@launch
+                        screen = Screen.Processing(s.meterType, path)
                         val bitmap = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
                         val rotated = rotateBitmap(bitmap, 90)
                         withContext(Dispatchers.IO) {

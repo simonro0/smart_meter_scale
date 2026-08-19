@@ -11,17 +11,21 @@ Taking photos of gas meters, electricity meters, and body scales is a simple way
 ### Current
 - CameraX live viewfinder with capture button
 - Gallery picker for existing photos
-- ML Kit Text Recognition (on-device, no cloud)
+- ML Kit Text Recognition (on-device, no cloud required)
+- Optional Gemini API backend for significantly better LCD/7-segment recognition (API key from aistudio.google.com)
 - OCR value parsing (weight, body fat %, body water %) with comma/dot handling and noise tolerance
-- Input validation with plausible range checks per measurement type
+- Manual image rotation (90° per tap) with automatic OCR retry — useful for sideways scale photos
+- Support for gas, electricity, and water meters in addition to body scales
+- Multi-user support for the scale (each user gets their own HA sensor)
 - Home Assistant REST API integration (`/api/states`) via OkHttp
-- Persistent configuration (HA base URL, long-lived access token) in SharedPreferences
-- Unit tests for parsing and validation logic (19 tests)
+- Persistent configuration (HA URL, token, Gemini key, users) in SharedPreferences
+- Optional backup folder (e.g. Syncthing Send-Only) with timestamp filenames
+- Photos saved to `Android/media/de.simonroder.smartmeterscale/captures/`
+- Unit tests for parsing and validation logic
 
 ### Planned
 - One-time display region calibration (crop to the display area for reliable reads)
-- Support for gas and electricity meter formats
-- Syncthing folder drop: save photo to a watched folder as an alternative trigger
+- Gemini Nano on-device support (Pixel 8+ / Android 14+) when the image API stabilises
 
 ## Architecture
 
@@ -41,9 +45,9 @@ Camera / Photo picker
 
 | Package | Contents |
 |---------|----------|
-| `data`  | `ScaleReading` data class |
-| `ocr`   | `OcrValueParser`, `ReadingValidator`, `OcrProcessor` |
-| `ha`    | `HomeAssistantConfig`, `HomeAssistantClient`, `HaPreferences` |
+| `data`  | `ScaleReading`, `MeterType`, `User` |
+| `ocr`   | `OcrProcessor` (ML Kit), `GeminiOcrClient`, `OcrValueParser`, `ReadingValidator` |
+| `ha`    | `HomeAssistantConfig`, `HomeAssistantClient`, `HaPreferences`, `UserPreferences` |
 | `ui`    | `HomeScreen`, `CameraScreen`, `ResultScreen`, `SettingsScreen` |
 
 ## Requirements
@@ -59,8 +63,13 @@ Open the project in Android Studio — it will download the Gradle wrapper and d
 From the command line (after Android Studio has set up the wrapper):
 
 ```bash
-# Debug APK
+# Debug APK (installierbar ohne Signatur-Setup)
 ./gradlew assembleDebug
+# Output: app/build/outputs/apk/debug/app-debug.apk
+
+# Release APK (erfordert Signing-Konfiguration, siehe unten)
+./gradlew assembleRelease
+# Output: app/build/outputs/apk/release/app-release.apk
 
 # Run unit tests
 ./gradlew test
@@ -71,6 +80,39 @@ From the command line (after Android Studio has set up the wrapper):
 ```
 
 On Windows use `gradlew.bat` instead of `./gradlew`.
+
+### Release-Signatur einrichten
+
+Eine Release-APK muss signiert sein. Einmalig einen Keystore erstellen:
+
+```bash
+keytool -genkey -v -keystore smartmeterscale.jks -keyalg RSA -keysize 2048 \
+  -validity 10000 -alias smartmeterscale
+```
+
+Dann in `app/build.gradle.kts` eintragen:
+
+```kotlin
+android {
+    signingConfigs {
+        create("release") {
+            storeFile = file("../smartmeterscale.jks")
+            storePassword = System.getenv("KEYSTORE_PASS") ?: "changeme"
+            keyAlias = "smartmeterscale"
+            keyPassword = System.getenv("KEY_PASS") ?: "changeme"
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+}
+```
+
+Alternativ: In Android Studio **Build → Generate Signed Bundle/APK** führt durch den Prozess interaktiv.
 
 ## Home Assistant Setup
 

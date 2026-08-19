@@ -7,8 +7,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -74,7 +74,7 @@ fun ResultScreen(
                             },
                             enabled = !rotating
                         ) {
-                            Icon(Icons.Default.RotateRight, contentDescription = "90° drehen und neu erkennen")
+                            Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = "90° drehen und neu erkennen")
                         }
                     }
                 }
