@@ -7,12 +7,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.RotateLeft
 import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -24,6 +26,8 @@ import de.simonroder.smartmeterscale.ha.HaPreferences
 import de.simonroder.smartmeterscale.ha.HomeAssistantClient
 import de.simonroder.smartmeterscale.ha.UserPreferences
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -35,7 +39,10 @@ fun ResultScreen(
     meterValue: Double?,
     imagePath: String?,
     rawOcrText: String? = null,
-    onRotateAndRetry: (() -> Unit)? = null,
+    // Called with ±90 to rotate file; ResultScreen reloads preview itself
+    onRotateFile: (suspend (degrees: Int) -> Unit)? = null,
+    // Called after debounce to trigger OCR on current file state
+    onRetryOcr: (() -> Unit)? = null,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -48,33 +55,56 @@ fun ResultScreen(
     var userMenuExpanded by remember { mutableStateOf(false) }
     var sendStatus by remember { mutableStateOf("") }
     var debugExpanded by remember { mutableStateOf(false) }
-    var rotating by remember { mutableStateOf(false) }
 
-    // Re-read thumbnail from file so it updates after rotation
-    val thumbnail = remember(imagePath, rotating) {
-        imagePath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }
+    // Preview bitmap — reloaded from file after each rotation
+    var thumbnail by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(imagePath) {
+        thumbnail = withContext(Dispatchers.IO) {
+            imagePath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }
+        }
     }
+
+    // Debounce: rotate preview immediately, start OCR only after 1.5s pause
+    var pendingOcrJob by remember { mutableStateOf<Job?>(null) }
+    var ocrCountdown by remember { mutableStateOf(false) }
+
+    fun rotate(degrees: Int) {
+        scope.launch {
+            onRotateFile?.invoke(degrees)
+            thumbnail = withContext(Dispatchers.IO) {
+                imagePath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }
+            }
+            pendingOcrJob?.cancel()
+            ocrCountdown = true
+            pendingOcrJob = scope.launch {
+                delay(1500L)
+                ocrCountdown = false
+                onRetryOcr?.invoke()
+            }
+        }
+    }
+
+    val hasRotate = onRotateFile != null && onRetryOcr != null
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Ergebnis – ${meterType.displayName}") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        pendingOcrJob?.cancel()
+                        onBack()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
                     }
                 },
                 actions = {
-                    if (onRotateAndRetry != null) {
-                        IconButton(
-                            onClick = {
-                                rotating = true
-                                sendStatus = ""
-                                onRotateAndRetry()
-                            },
-                            enabled = !rotating
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = "90° drehen und neu erkennen")
+                    if (hasRotate) {
+                        IconButton(onClick = { rotate(-90) }) {
+                            Icon(Icons.AutoMirrored.Filled.RotateLeft, contentDescription = "90° links drehen")
+                        }
+                        IconButton(onClick = { rotate(90) }) {
+                            Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = "90° rechts drehen")
                         }
                     }
                 }
@@ -93,9 +123,24 @@ fun ResultScreen(
                 Image(
                     bitmap = it,
                     contentDescription = "Aufgenommenes Bild",
-                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    modifier = Modifier.fillMaxWidth().height(200.dp),
                     contentScale = ContentScale.Fit
                 )
+            }
+
+            if (ocrCountdown) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text(
+                        "Erkennung startet gleich…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
             }
 
             if (meterType == MeterType.Scale && scaleReading != null) {
@@ -120,7 +165,7 @@ fun ResultScreen(
                 ReadingCard(meterType.displayName, "$meterValue ${meterType.unit}")
             } else {
                 Text(
-                    "Keine Werte erkannt. Bitte erneut versuchen oder Bild drehen (↻).",
+                    "Keine Werte erkannt." + if (hasRotate) " Bild mit ← → drehen und neu versuchen." else "",
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
@@ -161,11 +206,13 @@ fun ResultScreen(
                 if (sendStatus.isNotEmpty()) Text(sendStatus, style = MaterialTheme.typography.bodyMedium)
             }
 
-            OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = {
+                pendingOcrJob?.cancel()
+                onBack()
+            }, modifier = Modifier.fillMaxWidth()) {
                 Text("Neue Messung")
             }
 
-            // Debug card — shows raw OCR or Gemini response
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(

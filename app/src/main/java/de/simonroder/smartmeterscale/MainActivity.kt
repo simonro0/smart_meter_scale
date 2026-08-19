@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.documentfile.provider.DocumentFile
 import de.simonroder.smartmeterscale.data.MeterType
 import de.simonroder.smartmeterscale.ha.HaPreferences
 import de.simonroder.smartmeterscale.ocr.GeminiOcrClient
@@ -61,6 +62,7 @@ class MainActivity : ComponentActivity() {
                 scope.launch {
                     val imagePath = copyUriToMedia(uri)
                     screen = Screen.Processing(type, imagePath)
+                    copyToBackup(imagePath, type)
                     val bitmap = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(imagePath) }
                     screen = if (bitmap != null) {
                         processImage(bitmap, imagePath, type, mlKitProcessor, parser)
@@ -97,7 +99,7 @@ class MainActivity : ComponentActivity() {
                         val rotated = rotateBitmap(bitmap, rotationDegrees)
                         val imagePath = saveBitmapToMedia(rotated)
                         screen = Screen.Processing(s.meterType, imagePath)
-                        copyToBackupIfConfigured(imagePath, s.meterType)
+                        copyToBackup(imagePath, s.meterType)
                         screen = processImage(rotated, imagePath, s.meterType, mlKitProcessor, parser)
                     }
                 },
@@ -112,10 +114,7 @@ class MainActivity : ComponentActivity() {
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(56.dp))
-                    Text(
-                        "${s.meterType.displayName} wird erkannt…",
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    Text("${s.meterType.displayName} wird erkannt…", style = MaterialTheme.typography.bodyLarge)
                     val usingGemini = HaPreferences(this@MainActivity).geminiApiKey.isNotBlank()
                     Text(
                         if (usingGemini) "Gemini AI analysiert das Bild" else "ML Kit läuft…",
@@ -130,16 +129,20 @@ class MainActivity : ComponentActivity() {
                 meterValue = s.meterValue,
                 imagePath = s.imagePath,
                 rawOcrText = s.rawOcrText,
-                onRotateAndRetry = {
+                onRotateFile = { degrees ->
+                    val path = s.imagePath ?: return@ResultScreen
+                    withContext(Dispatchers.IO) {
+                        val bitmap = BitmapFactory.decodeFile(path) ?: return@withContext
+                        val rotated = rotateBitmap(bitmap, degrees)
+                        FileOutputStream(path).use { rotated.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                    }
+                },
+                onRetryOcr = {
                     scope.launch {
                         val path = s.imagePath ?: return@launch
                         screen = Screen.Processing(s.meterType, path)
                         val bitmap = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
-                        val rotated = rotateBitmap(bitmap, 90)
-                        withContext(Dispatchers.IO) {
-                            FileOutputStream(path).use { rotated.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-                        }
-                        screen = processImage(rotated, path, s.meterType, mlKitProcessor, parser)
+                        screen = processImage(bitmap, path, s.meterType, mlKitProcessor, parser)
                     }
                 },
                 onBack = { screen = Screen.Home }
@@ -193,11 +196,9 @@ class MainActivity : ComponentActivity() {
             Log.d("SmartMeter", "Gemini OCR [${type.name}]: $response")
             if (type == MeterType.Scale) {
                 val reading = parser.parseGeminiScale(response)
-                Log.d("SmartMeter", "Gemini Scale parsed: $reading")
                 Screen.Result(type, reading, null, imagePath, "Gemini: $response")
             } else {
                 val value = parser.parseGeminiMeter(response)
-                Log.d("SmartMeter", "Gemini Meter parsed: $value")
                 Screen.Result(type, null, value, imagePath, "Gemini: $response")
             }
         } catch (e: Exception) {
@@ -234,7 +235,6 @@ class MainActivity : ComponentActivity() {
         contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(file).use { input.copyTo(it) }
         }
-        Log.d("SmartMeter", "Gallery image copied: ${file.absolutePath}")
         return file.absolutePath
     }
 
@@ -244,17 +244,29 @@ class MainActivity : ComponentActivity() {
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
-    private fun copyToBackupIfConfigured(sourcePath: String, meterType: MeterType) {
-        val backupPath = HaPreferences(this).backupPath
-        if (backupPath.isBlank()) return
+    // Backup via SAF (DocumentFile) so it works on Android 10+ without MANAGE_EXTERNAL_STORAGE.
+    // Timestamp is always in the filename. Called regardless of OCR result.
+    private fun copyToBackup(sourcePath: String, meterType: MeterType) {
+        val uriString = HaPreferences(this).backupUri
+        if (uriString.isBlank()) return
         try {
-            val dir = File(backupPath).also { it.mkdirs() }
+            val treeUri = Uri.parse(uriString)
+            val dir = DocumentFile.fromTreeUri(this, treeUri) ?: run {
+                Log.w("SmartMeter", "Backup: could not open tree URI")
+                return
+            }
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val dest = File(dir, "${timestamp}_${meterType.entityBase}.jpg")
-            File(sourcePath).copyTo(dest, overwrite = true)
-            Log.d("SmartMeter", "Backup copied to: ${dest.absolutePath}")
+            val fileName = "${timestamp}_${meterType.entityBase}.jpg"
+            val newFile = dir.createFile("image/jpeg", fileName) ?: run {
+                Log.w("SmartMeter", "Backup: could not create file $fileName")
+                return
+            }
+            contentResolver.openOutputStream(newFile.uri)?.use { out ->
+                File(sourcePath).inputStream().use { it.copyTo(out) }
+            }
+            Log.d("SmartMeter", "Backup saved: $fileName")
         } catch (e: Exception) {
-            Log.e("SmartMeter", "Backup copy failed: ${e.message}", e)
+            Log.e("SmartMeter", "Backup failed: ${e.message}", e)
         }
     }
 }

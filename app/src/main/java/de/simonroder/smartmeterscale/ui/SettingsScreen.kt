@@ -1,5 +1,6 @@
 package de.simonroder.smartmeterscale.ui
 
+import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -41,11 +42,14 @@ fun SettingsScreen(onBack: () -> Unit) {
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         uri?.let {
-            val path = it.toFilePath()
-            if (path != null) {
-                backupPath = path
-                saved = false
-            }
+            // Persist read+write permission across app restarts
+            context.contentResolver.takePersistableUriPermission(
+                it,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            haPrefs.backupUri = it.toString()
+            backupPath = it.toFilePath() ?: it.toString()
+            saved = false
         }
     }
 

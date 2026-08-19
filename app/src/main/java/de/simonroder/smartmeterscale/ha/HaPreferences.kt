@@ -17,6 +17,11 @@ class HaPreferences(context: Context) {
         get() = prefs.getString("backup_path", "") ?: ""
         set(v) = prefs.edit().putString("backup_path", v).apply()
 
+    // SAF tree URI persisted after folder picker — used for reliable writing on Android 10+
+    var backupUri: String
+        get() = prefs.getString("backup_uri", "") ?: ""
+        set(v) = prefs.edit().putString("backup_uri", v).apply()
+
     var geminiApiKey: String
         get() = prefs.getString("gemini_api_key", "") ?: ""
         set(v) = prefs.edit().putString("gemini_api_key", v).apply()
