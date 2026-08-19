@@ -24,6 +24,7 @@ import androidx.documentfile.provider.DocumentFile
 import de.simonroder.smartmeterscale.data.MeterType
 import de.simonroder.smartmeterscale.ha.HaPreferences
 import de.simonroder.smartmeterscale.ocr.GeminiOcrClient
+import de.simonroder.smartmeterscale.ocr.GeminiRateLimitException
 import de.simonroder.smartmeterscale.ocr.OcrProcessor
 import de.simonroder.smartmeterscale.ocr.OcrValueParser
 import de.simonroder.smartmeterscale.ui.*
@@ -159,11 +160,16 @@ class MainActivity : ComponentActivity() {
         parser: OcrValueParser
     ): Screen.Result {
         val geminiKey = HaPreferences(this).geminiApiKey
-        return if (geminiKey.isNotBlank()) {
-            processWithGemini(bitmap, imagePath, type, geminiKey, parser)
-        } else {
-            processWithMlKit(bitmap, imagePath, type, mlKitProcessor, parser)
+        if (geminiKey.isNotBlank()) {
+            try {
+                return processWithGemini(bitmap, imagePath, type, geminiKey, parser)
+            } catch (e: GeminiRateLimitException) {
+                Log.w("SmartMeter", "Gemini rate limit — falling back to ML Kit")
+                val result = processWithMlKit(bitmap, imagePath, type, mlKitProcessor, parser)
+                return result.copy(rawOcrText = "⚠ ${e.message}\n\nML Kit: ${result.rawOcrText}")
+            }
         }
+        return processWithMlKit(bitmap, imagePath, type, mlKitProcessor, parser)
     }
 
     private suspend fun processWithMlKit(

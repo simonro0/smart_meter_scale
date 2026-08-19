@@ -71,14 +71,32 @@ class OcrValueParser {
             .firstOrNull()
     }
 
-    // Parses Gemini response "weight=67.8 fat=14.4 water=60.5"
+    // Parses Gemini response — handles both structured "weight=67.8 fat=14.4 water=60.5"
+    // and natural language "Gewicht: 67,8 kg / Körperfett (F): 14,4 %" formats.
     fun parseGeminiScale(text: String): ScaleReading? {
-        val weight = Regex("""weight=([\d.]+)""").find(text)
-            ?.groupValues?.get(1)?.toDoubleOrNull() ?: return null
-        val fat = Regex("""fat=([\d.]+)""").find(text)
-            ?.groupValues?.get(1)?.toDoubleOrNull()
-        val water = Regex("""water=([\d.]+)""").find(text)
-            ?.groupValues?.get(1)?.toDoubleOrNull()
+        fun find(vararg patterns: String): Double? {
+            for (p in patterns) {
+                Regex(p, RegexOption.IGNORE_CASE).find(text)
+                    ?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
+                    ?.let { return it }
+            }
+            return null
+        }
+        val weight = find(
+            """weight\s*[=:]\s*([\d.,]+)""",
+            """Gewicht[^:]*:\s*([\d.,]+)""",
+            """(\d+[.,]\d+)\s*kg"""
+        ) ?: return null
+        val fat = find(
+            """fat\s*[=:]\s*([\d.,]+)""",
+            """[Ff]ett[^:*]*:\s*([\d.,]+)""",
+            """\bF\b[^:]*:\s*([\d.,]+)"""
+        )
+        val water = find(
+            """water\s*[=:]\s*([\d.,]+)""",
+            """[Ww]asser[^:]*:\s*([\d.,]+)""",
+            """\bW\b[^:]*:\s*([\d.,]+)"""
+        )
         return ScaleReading(weight, fat, water)
     }
 

@@ -12,6 +12,8 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
+class GeminiRateLimitException(message: String) : Exception(message)
+
 class GeminiOcrClient(private val apiKey: String) {
 
     private val client = OkHttpClient.Builder()
@@ -20,14 +22,17 @@ class GeminiOcrClient(private val apiKey: String) {
         .build()
 
     private val scalePrompt = """
-        Look at this scale display and extract the values.
-        Return ONLY this format (replace numbers, write null if a value is not visible):
-        weight=67.8 fat=14.4 water=60.5
+        What values are shown on this body scale display?
+        Write exactly three lines, nothing else:
+        weight=<number>
+        fat=<number>
+        water=<number>
+        Replace <number> with the actual value from the display. Use a dot as decimal separator.
     """.trimIndent()
 
     private val meterPrompt = """
-        Look at this meter display and extract the reading.
-        Return ONLY the numeric value shown, nothing else. Example: 1234.567
+        What is the meter reading shown on this display?
+        Write only the numeric value, nothing else. Use a dot as decimal separator.
     """.trimIndent()
 
     fun recognizeText(bitmap: Bitmap, meterType: MeterType): String {
@@ -41,6 +46,9 @@ class GeminiOcrClient(private val apiKey: String) {
             .build()
 
         client.newCall(request).execute().use { response ->
+            if (response.code == 429) {
+                throw GeminiRateLimitException("Gemini-Limit erreicht (5 RPM / 20 RPD). Fallback auf ML Kit.")
+            }
             if (!response.isSuccessful) {
                 throw IllegalStateException("Gemini API error ${response.code}: ${response.body?.string()}")
             }
@@ -74,7 +82,7 @@ class GeminiOcrClient(private val apiKey: String) {
             put("contents", JSONArray().apply { put(content) })
             put("generationConfig", JSONObject().apply {
                 put("temperature", 0.1)
-                put("maxOutputTokens", 50)
+                put("maxOutputTokens", 100)
             })
         }
     }
