@@ -1,0 +1,1 @@
+-keep class de.simonroder.smartmeterscale.** { *; }
