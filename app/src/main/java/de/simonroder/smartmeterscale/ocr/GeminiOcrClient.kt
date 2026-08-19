@@ -95,7 +95,7 @@ class GeminiOcrClient(private val apiKey: String) {
             put("contents", JSONArray().apply { put(content) })
             put("generationConfig", JSONObject().apply {
                 put("temperature", 0.0)
-                put("maxOutputTokens", 100)
+                put("maxOutputTokens", 1024)
                 put("mediaResolution", "MEDIA_RESOLUTION_HIGH")
             })
         }

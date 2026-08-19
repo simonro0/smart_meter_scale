@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Scale platform body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M22,48 Q22,36 34,36 L74,36 Q86,36 86,48 L86,72 Q86,80 78,82 L30,82 Q22,80 22,72 Z"/>
+
+    <!-- Display window -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M32,42 L76,42 L76,60 L32,60 Z"/>
+
+    <!-- "67.8" on display — three digit segments simplified -->
+    <path
+        android:fillColor="#90CAF9"
+        android:strokeColor="#90CAF9"
+        android:strokeWidth="1.5"
+        android:pathData="M38,45 L44,45 M38,51 L44,51 M38,57 L44,57 M38,45 L38,51 M44,45 L44,51 M38,51 L38,57 M44,51 L44,57"/>
+    <path
+        android:fillColor="#90CAF9"
+        android:strokeColor="#90CAF9"
+        android:strokeWidth="1.5"
+        android:pathData="M47,51 L47,57"/>
+    <path
+        android:fillColor="#90CAF9"
+        android:strokeColor="#90CAF9"
+        android:strokeWidth="1.5"
+        android:pathData="M51,45 L57,45 M51,51 L57,51 M51,57 L57,57 M51,45 L51,51 M51,51 L51,57 M57,45 L57,51 M57,51 L57,57"/>
+    <!-- dot -->
+    <path
+        android:fillColor="#90CAF9"
+        android:pathData="M59.5,56 m-1,0 a1,1 0 1,0 2,0 a1,1 0 1,0 -2,0"/>
+    <path
+        android:fillColor="#90CAF9"
+        android:strokeColor="#90CAF9"
+        android:strokeWidth="1.5"
+        android:pathData="M62,45 L68,45 M62,51 L68,51 M62,57 L68,57 M62,45 L62,51 M68,45 L68,51 M62,51 L62,57 M68,51 L68,57"/>
+
+    <!-- "kg" label -->
+    <path
+        android:fillColor="#42A5F5"
+        android:strokeColor="#42A5F5"
+        android:strokeWidth="1"
+        android:pathData="M71,50 L74,47 M71,51 L74,54 M71,47 L71,54"/>
+
+    <!-- Left foot pad -->
+    <path
+        android:fillColor="#BBDEFB"
+        android:pathData="M28,74 Q28,80 36,80 Q44,80 44,74 L44,72 L28,72 Z"/>
+
+    <!-- Right foot pad -->
+    <path
+        android:fillColor="#BBDEFB"
+        android:pathData="M64,74 Q64,80 72,80 Q80,80 80,74 L80,72 L64,72 Z"/>
+</vector>
