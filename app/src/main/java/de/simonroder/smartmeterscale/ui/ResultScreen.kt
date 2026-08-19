@@ -53,7 +53,8 @@ fun ResultScreen(
     var selectedUser by remember { mutableStateOf<User?>(users.firstOrNull()) }
     var userMenuExpanded by remember { mutableStateOf(false) }
     var sendStatus by remember { mutableStateOf("") }
-    var debugExpanded by remember { mutableStateOf(false) }
+    val isError = remember(rawOcrText) { rawOcrText?.startsWith("Fehler") == true }
+    var debugExpanded by remember(isError) { mutableStateOf(isError) }
 
     // Preview bitmap — reloaded from file after each rotation
     var thumbnail by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -163,10 +164,18 @@ fun ResultScreen(
             } else if (meterValue != null) {
                 ReadingCard(meterType.displayName, "$meterValue ${meterType.unit}")
             } else {
-                Text(
-                    "Keine Werte erkannt." + if (hasRotate) " Bild mit ← → drehen und neu versuchen." else "",
-                    style = MaterialTheme.typography.bodyLarge
-                )
+                if (isError && rawOcrText != null) {
+                    Text(
+                        rawOcrText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                } else {
+                    Text(
+                        "Keine Werte erkannt." + if (hasRotate) " Bild mit ← → drehen und neu versuchen." else "",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
             }
 
             if (capturedAt != null) {

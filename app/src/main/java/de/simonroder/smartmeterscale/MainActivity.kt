@@ -34,6 +34,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileDescriptor
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.time.Instant
@@ -63,21 +65,41 @@ class MainActivity : ComponentActivity() {
 
         val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
             val type = pendingMeterType ?: return@rememberLauncherForActivityResult
-            uri?.let { selectedUri ->
-                scope.launch {
+            uri ?: return@rememberLauncherForActivityResult
+
+            // Both operations happen here on the main thread while the URI permission from
+            // GetContent() is guaranteed active. On Android 13+ (photo picker), URIs may
+            // become inaccessible from background threads after the callback returns.
+            val pfd = try { contentResolver.openFileDescriptor(uri, "r") } catch (e: Exception) {
+                Log.e("SmartMeter", "Gallery: openFileDescriptor threw for $uri: ${e.message}")
+                null
+            }
+            val capturedAt = readGalleryTimestamp(uri) ?: millisToIso(System.currentTimeMillis())
+
+            scope.launch {
+                try {
                     screen = Screen.Processing(type, null)
-                    val (capturedAt, pair) = withContext(Dispatchers.IO) {
-                        val ts = readGalleryTimestamp(selectedUri) ?: millisToIso(System.currentTimeMillis())
-                        Pair(ts, copyUriToMedia(selectedUri))
+                    if (pfd == null) {
+                        screen = Screen.Result(type, null, null, null,
+                            "Fehler: Galeriebild konnte nicht geöffnet werden (openFileDescriptor = null)")
+                        return@launch
+                    }
+                    val pair = withContext(Dispatchers.IO) {
+                        pfd.use { copyFdToMedia(it.fileDescriptor) }
                     }
                     if (pair == null) {
-                        screen = Screen.Result(type, null, null, null, "Fehler: Bild konnte nicht geladen werden")
+                        screen = Screen.Result(type, null, null, null,
+                            "Fehler: Galeriebild konnte nicht dekodiert werden")
                         return@launch
                     }
                     val (imagePath, bitmap) = pair
                     withContext(Dispatchers.IO) { copyToBackup(imagePath, type) }
                     val result = processImage(bitmap, imagePath, type, mlKitProcessor, parser)
                     screen = result.copy(capturedAt = capturedAt)
+                } catch (e: Exception) {
+                    Log.e("SmartMeter", "Gallery flow exception: ${e.message}", e)
+                    screen = Screen.Result(type, null, null, null,
+                        "Fehler: ${e.javaClass.simpleName}: ${e.message}")
                 }
             }
         }
@@ -248,24 +270,66 @@ class MainActivity : ComponentActivity() {
         return file.absolutePath
     }
 
-    // Decodes via BitmapFactory.decodeStream so HEIC/WebP/PNG are all handled correctly,
-    // then re-encodes as JPEG. Returns null if the URI cannot be opened or decoded.
-    private fun copyUriToMedia(uri: Uri): Pair<String, Bitmap>? {
-        val bitmap = contentResolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream)
-        } ?: run {
-            Log.e("SmartMeter", "copyUriToMedia: cannot open stream for $uri")
+    // Decodes a gallery image from a FileDescriptor.
+    // Reads all bytes into a ByteArray first — this works for both seekable FDs (local files)
+    // and non-seekable streams (e.g. Google Photos cloud content). The ByteArray then allows
+    // the two-pass BitmapFactory approach (pass 1: dimensions only; pass 2: decode with
+    // inSampleSize) without needing to seek or re-open the stream.
+    // Note: FileInputStream(fd) does NOT close the FD when the stream is closed/GCed,
+    // since the FD is owned externally by the ParcelFileDescriptor.
+    private fun copyFdToMedia(fd: FileDescriptor): Pair<String, Bitmap>? {
+        val imageBytes = try {
+            FileInputStream(fd).readBytes()
+        } catch (e: Exception) {
+            Log.e("SmartMeter", "copyFdToMedia: read failed: ${e.message}")
             return null
         }
+        if (imageBytes.isEmpty()) {
+            Log.e("SmartMeter", "copyFdToMedia: stream returned 0 bytes")
+            return null
+        }
+        Log.d("SmartMeter", "Gallery: read ${imageBytes.size} bytes from FD")
+
+        // Pass 1: dimensions only, no bitmap allocated
+        val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, boundsOpts)
+        val srcW = boundsOpts.outWidth
+        val srcH = boundsOpts.outHeight
+        if (srcW <= 0 || srcH <= 0) {
+            Log.e("SmartMeter", "copyFdToMedia: invalid dimensions ${srcW}×${srcH} — not a valid image")
+            return null
+        }
+        Log.d("SmartMeter", "Gallery source: ${srcW}×${srcH}")
+
+        // Keep the longer side ≤ 2048 px — sufficient resolution for Gemini and ML Kit OCR
+        val sampleSize = computeSampleSize(srcW, srcH, maxDimension = 2048)
+
+        // Pass 2: decode at reduced resolution using the already-buffered bytes
+        val bitmap = BitmapFactory.decodeByteArray(
+            imageBytes, 0, imageBytes.size,
+            BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        )
+        if (bitmap == null) {
+            Log.e("SmartMeter", "copyFdToMedia: decodeByteArray returned null (sampleSize=$sampleSize)")
+            return null
+        }
+        Log.d("SmartMeter", "Gallery decoded: ${bitmap.width}×${bitmap.height} (sampleSize=$sampleSize)")
+
         val file = File(capturesDir(), "last_capture.jpg")
         try {
             FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
         } catch (e: Exception) {
-            Log.e("SmartMeter", "copyUriToMedia: write failed: ${e.message}")
+            Log.e("SmartMeter", "copyFdToMedia: write failed at ${file.absolutePath}: ${e.message}")
             return null
         }
         Log.d("SmartMeter", "Gallery → ${file.absolutePath} (${file.length()} bytes)")
         return Pair(file.absolutePath, bitmap)
+    }
+
+    private fun computeSampleSize(width: Int, height: Int, maxDimension: Int): Int {
+        var s = 1
+        while (maxOf(width, height) / s > maxDimension) s *= 2
+        return s
     }
 
     private fun readGalleryTimestamp(uri: Uri): String? = try {
