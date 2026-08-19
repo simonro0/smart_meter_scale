@@ -54,6 +54,8 @@ class OcrValueParserTest {
         val result = parser.parse("F\n14.6 W\n68.1kg\n60.5 %\n|")
         assertNotNull(result)
         assertEquals(68.1, result!!.weightKg, 0.01)
+        assertEquals(14.6, result.bodyFatPercent!!, 0.01)
+        assertEquals(60.5, result.bodyWaterPercent!!, 0.01)
     }
 
     @Test
@@ -83,5 +85,34 @@ class OcrValueParserTest {
         val result = parser.parse("68.1 KG")
         assertNotNull(result)
         assertEquals(68.1, result!!.weightKg, 0.01)
+    }
+
+    @Test
+    fun `filters out physical button labels from scale case`() {
+        val result = parser.parse("F\n14.6 %\n68.1 kg\n60.5 %\nON/OFF\nUP\nDOWN\nSET")
+        assertNotNull(result)
+        assertEquals(68.1, result!!.weightKg, 0.01)
+        assertEquals(14.6, result.bodyFatPercent!!, 0.01)
+        assertEquals(60.5, result.bodyWaterPercent!!, 0.01)
+    }
+
+    @Test
+    fun `extracts fat from standalone F label followed by number`() {
+        val result = parser.parse("F\n14.6\n68.1 kg\n60.5 %")
+        assertNotNull(result)
+        assertEquals(14.6, result!!.bodyFatPercent!!, 0.01)
+    }
+
+    @Test
+    fun `extracts water from standalone W label followed by number`() {
+        val result = parser.parse("68.1 kg\n14.6 %\nW\n60.5")
+        assertNotNull(result)
+        assertEquals(60.5, result!!.bodyWaterPercent!!, 0.01)
+    }
+
+    @Test
+    fun `parseMeterValue filters button labels and returns max number`() {
+        val result = parser.parseMeterValue("1234.5\nON/OFF\nUP\nDOWN\nSET\n0")
+        assertEquals(1234.5, result!!, 0.01)
     }
 }

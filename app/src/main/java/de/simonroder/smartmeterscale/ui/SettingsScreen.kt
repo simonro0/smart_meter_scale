@@ -1,11 +1,16 @@
 package de.simonroder.smartmeterscale.ui
 
+import android.net.Uri
+import android.provider.DocumentsContract
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,9 +32,22 @@ fun SettingsScreen(onBack: () -> Unit) {
     var baseUrl by remember { mutableStateOf(haPrefs.baseUrl) }
     var token by remember { mutableStateOf(haPrefs.token) }
     var backupPath by remember { mutableStateOf(haPrefs.backupPath) }
+    var geminiApiKey by remember { mutableStateOf(haPrefs.geminiApiKey) }
     var saved by remember { mutableStateOf(false) }
     var users by remember { mutableStateOf(userPrefs.getUsers()) }
     var newUserName by remember { mutableStateOf("") }
+
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        uri?.let {
+            val path = it.toFilePath()
+            if (path != null) {
+                backupPath = path
+                saved = false
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -79,12 +97,28 @@ fun SettingsScreen(onBack: () -> Unit) {
                     haPrefs.baseUrl = baseUrl.trimEnd('/')
                     haPrefs.token = token.trim()
                     haPrefs.backupPath = backupPath.trim()
+                    haPrefs.geminiApiKey = geminiApiKey.trim()
                     saved = true
                 },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Speichern") }
 
             if (saved) Text("Gespeichert.", color = MaterialTheme.colorScheme.primary)
+
+            HorizontalDivider()
+
+            // --- Gemini OCR ---
+            Text("Gemini OCR (optional)", style = MaterialTheme.typography.titleMedium)
+
+            OutlinedTextField(
+                value = geminiApiKey,
+                onValueChange = { geminiApiKey = it; saved = false },
+                label = { Text("Gemini API Key") },
+                supportingText = { Text("Kostenloser Key unter aistudio.google.com → \"Get API key\". Wenn eingetragen, wird Gemini statt ML Kit für die Texterkennung verwendet — deutlich zuverlässiger für LCD-Anzeigen.") },
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true
+            )
 
             HorizontalDivider()
 
@@ -96,8 +130,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                 onValueChange = { backupPath = it; saved = false },
                 label = { Text("Backup-Ordner (optional)") },
                 placeholder = { Text("/storage/emulated/0/SmartMeter") },
-                supportingText = { Text("Aufnahmen werden zusätzlich hier gespeichert. Dieser Ordner kann in Syncthing als Send-Only-Ordner konfiguriert werden.") },
+                supportingText = { Text("Aufnahmen werden zusätzlich hier gespeichert und können per Syncthing synchronisiert werden.") },
                 modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    IconButton(onClick = { folderPickerLauncher.launch(null) }) {
+                        Icon(Icons.Default.Folder, contentDescription = "Ordner auswählen")
+                    }
+                },
                 singleLine = true
             )
 
@@ -153,5 +192,17 @@ fun SettingsScreen(onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.outline
             )
         }
+    }
+}
+
+private fun Uri.toFilePath(): String? {
+    return try {
+        val docId = DocumentsContract.getTreeDocumentId(this)
+        val parts = docId.split(":")
+        if (parts.size >= 2 && parts[0] == "primary") {
+            "/storage/emulated/0/${parts[1]}"
+        } else null
+    } catch (e: Exception) {
+        null
     }
 }

@@ -3,6 +3,7 @@ package de.simonroder.smartmeterscale
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -14,11 +15,14 @@ import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import de.simonroder.smartmeterscale.data.MeterType
 import de.simonroder.smartmeterscale.ha.HaPreferences
+import de.simonroder.smartmeterscale.ocr.GeminiOcrClient
 import de.simonroder.smartmeterscale.ocr.OcrProcessor
 import de.simonroder.smartmeterscale.ocr.OcrValueParser
 import de.simonroder.smartmeterscale.ui.*
 import de.simonroder.smartmeterscale.ui.theme.SmartMeterScaleTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -29,7 +33,7 @@ class MainActivity : ComponentActivity() {
 
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* handled in composable via state */ }
+    ) { /* handled via composable state */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,7 +44,7 @@ class MainActivity : ComponentActivity() {
     private fun AppContent() {
         var screen by remember { mutableStateOf<Screen>(Screen.Home) }
         var pendingMeterType by remember { mutableStateOf<MeterType?>(null) }
-        val processor = remember { OcrProcessor() }
+        val mlKitProcessor = remember { OcrProcessor() }
         val parser = remember { OcrValueParser() }
         val scope = rememberCoroutineScope()
 
@@ -49,13 +53,11 @@ class MainActivity : ComponentActivity() {
             uri?.let {
                 scope.launch {
                     val imagePath = copyUriToMedia(uri)
-                    try {
-                        val text = processor.processUriToText(applicationContext, uri)
-                        Log.d("SmartMeter", "Gallery OCR [${type.name}]: $text")
-                        screen = buildResult(type, text, parser, imagePath)
-                    } catch (e: Exception) {
-                        Log.e("SmartMeter", "Gallery OCR error: ${e.message}", e)
-                        screen = Screen.Result(type, null, null, imagePath, "Fehler: ${e.message}")
+                    val bitmap = BitmapFactory.decodeFile(imagePath)
+                    screen = if (bitmap != null) {
+                        processImage(bitmap, imagePath, type, mlKitProcessor, parser)
+                    } else {
+                        Screen.Result(type, null, null, imagePath, "Fehler: Bild konnte nicht geladen werden")
                     }
                 }
             }
@@ -87,14 +89,7 @@ class MainActivity : ComponentActivity() {
                         val rotated = rotateBitmap(bitmap, rotationDegrees)
                         val imagePath = saveBitmapToMedia(rotated)
                         copyToBackupIfConfigured(imagePath, s.meterType)
-                        try {
-                            val text = processor.processBitmapToText(rotated)
-                            Log.d("SmartMeter", "Camera OCR [${s.meterType.name}]: $text")
-                            screen = buildResult(s.meterType, text, parser, imagePath)
-                        } catch (e: Exception) {
-                            Log.e("SmartMeter", "Camera OCR error: ${e.message}", e)
-                            screen = Screen.Result(s.meterType, null, null, imagePath, "Fehler: ${e.message}")
-                        }
+                        screen = processImage(rotated, imagePath, s.meterType, mlKitProcessor, parser)
                     }
                 },
                 onBack = { screen = Screen.Home }
@@ -105,21 +100,90 @@ class MainActivity : ComponentActivity() {
                 meterValue = s.meterValue,
                 imagePath = s.imagePath,
                 rawOcrText = s.rawOcrText,
+                onRotateAndRetry = {
+                    scope.launch {
+                        val path = s.imagePath ?: return@launch
+                        val bitmap = withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path) } ?: return@launch
+                        val rotated = rotateBitmap(bitmap, 90)
+                        withContext(Dispatchers.IO) {
+                            FileOutputStream(path).use { rotated.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                        }
+                        screen = processImage(rotated, path, s.meterType, mlKitProcessor, parser)
+                    }
+                },
                 onBack = { screen = Screen.Home }
             )
             is Screen.Settings -> SettingsScreen(onBack = { screen = Screen.Home })
         }
     }
 
-    private fun buildResult(type: MeterType, text: String, parser: OcrValueParser, imagePath: String?): Screen.Result {
+    private suspend fun processImage(
+        bitmap: Bitmap,
+        imagePath: String?,
+        type: MeterType,
+        mlKitProcessor: OcrProcessor,
+        parser: OcrValueParser
+    ): Screen.Result {
+        val geminiKey = HaPreferences(this).geminiApiKey
+        return if (geminiKey.isNotBlank()) {
+            processWithGemini(bitmap, imagePath, type, geminiKey, parser)
+        } else {
+            processWithMlKit(bitmap, imagePath, type, mlKitProcessor, parser)
+        }
+    }
+
+    private suspend fun processWithMlKit(
+        bitmap: Bitmap,
+        imagePath: String?,
+        type: MeterType,
+        processor: OcrProcessor,
+        parser: OcrValueParser
+    ): Screen.Result {
+        return try {
+            val text = processor.processBitmapToText(bitmap)
+            Log.d("SmartMeter", "ML Kit OCR [${type.name}]: $text")
+            buildResultFromRaw(type, text, parser, imagePath)
+        } catch (e: Exception) {
+            Log.e("SmartMeter", "ML Kit error: ${e.message}", e)
+            Screen.Result(type, null, null, imagePath, "Fehler: ${e.message}")
+        }
+    }
+
+    private suspend fun processWithGemini(
+        bitmap: Bitmap,
+        imagePath: String?,
+        type: MeterType,
+        apiKey: String,
+        parser: OcrValueParser
+    ): Screen.Result {
+        return try {
+            val gemini = GeminiOcrClient(apiKey)
+            val response = withContext(Dispatchers.IO) { gemini.recognizeText(bitmap, type) }
+            Log.d("SmartMeter", "Gemini OCR [${type.name}]: $response")
+            if (type == MeterType.Scale) {
+                val reading = parser.parseGeminiScale(response)
+                Log.d("SmartMeter", "Gemini Scale parsed: $reading")
+                Screen.Result(type, reading, null, imagePath, "Gemini: $response")
+            } else {
+                val value = parser.parseGeminiMeter(response)
+                Log.d("SmartMeter", "Gemini Meter parsed: $value")
+                Screen.Result(type, null, value, imagePath, "Gemini: $response")
+            }
+        } catch (e: Exception) {
+            Log.e("SmartMeter", "Gemini error: ${e.message}", e)
+            Screen.Result(type, null, null, imagePath, "Gemini-Fehler: ${e.message}")
+        }
+    }
+
+    private fun buildResultFromRaw(type: MeterType, text: String, parser: OcrValueParser, imagePath: String?): Screen.Result {
         val trimmed = text.trim()
         return if (type == MeterType.Scale) {
             val reading = parser.parse(trimmed)
-            Log.d("SmartMeter", "Scale parsed: $reading from text length ${trimmed.length}")
+            Log.d("SmartMeter", "ML Kit Scale parsed: $reading")
             Screen.Result(type, reading, null, imagePath, trimmed)
         } else {
             val value = parser.parseMeterValue(trimmed)
-            Log.d("SmartMeter", "Meter parsed: $value from text length ${trimmed.length}")
+            Log.d("SmartMeter", "ML Kit Meter parsed: $value")
             Screen.Result(type, null, value, imagePath, trimmed)
         }
     }

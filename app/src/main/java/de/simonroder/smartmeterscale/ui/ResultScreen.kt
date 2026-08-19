@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +35,7 @@ fun ResultScreen(
     meterValue: Double?,
     imagePath: String?,
     rawOcrText: String? = null,
+    onRotateAndRetry: (() -> Unit)? = null,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -46,8 +48,10 @@ fun ResultScreen(
     var userMenuExpanded by remember { mutableStateOf(false) }
     var sendStatus by remember { mutableStateOf("") }
     var debugExpanded by remember { mutableStateOf(false) }
+    var rotating by remember { mutableStateOf(false) }
 
-    val thumbnail = remember(imagePath) {
+    // Re-read thumbnail from file so it updates after rotation
+    val thumbnail = remember(imagePath, rotating) {
         imagePath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }
     }
 
@@ -58,6 +62,20 @@ fun ResultScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
+                    }
+                },
+                actions = {
+                    if (onRotateAndRetry != null) {
+                        IconButton(
+                            onClick = {
+                                rotating = true
+                                sendStatus = ""
+                                onRotateAndRetry()
+                            },
+                            enabled = !rotating
+                        ) {
+                            Icon(Icons.Default.RotateRight, contentDescription = "90° drehen und neu erkennen")
+                        }
                     }
                 }
             )
@@ -101,10 +119,14 @@ fun ResultScreen(
             } else if (meterValue != null) {
                 ReadingCard(meterType.displayName, "$meterValue ${meterType.unit}")
             } else {
-                Text("Keine Werte erkannt. Bitte erneut versuchen.", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Keine Werte erkannt. Bitte erneut versuchen oder Bild drehen (↻).",
+                    style = MaterialTheme.typography.bodyLarge
+                )
             }
 
-            val hasReading = (meterType == MeterType.Scale && scaleReading != null) || (meterType != MeterType.Scale && meterValue != null)
+            val hasReading = (meterType == MeterType.Scale && scaleReading != null) ||
+                    (meterType != MeterType.Scale && meterValue != null)
 
             if (hasReading) {
                 if (haPrefs.isConfigured()) {
@@ -143,7 +165,7 @@ fun ResultScreen(
                 Text("Neue Messung")
             }
 
-            // Debug section – always shown so OCR failures can be diagnosed
+            // Debug card — shows raw OCR or Gemini response
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
@@ -151,14 +173,21 @@ fun ResultScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
                                 Icons.Default.BugReport,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.size(16.dp)
                             )
-                            Text("OCR Debug", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+                            Text(
+                                "OCR Debug",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.outline
+                            )
                         }
                         TextButton(onClick = { debugExpanded = !debugExpanded }) {
                             Text(if (debugExpanded) "Ausblenden" else "Anzeigen")

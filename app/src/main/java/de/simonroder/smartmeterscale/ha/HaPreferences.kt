@@ -17,6 +17,10 @@ class HaPreferences(context: Context) {
         get() = prefs.getString("backup_path", "") ?: ""
         set(v) = prefs.edit().putString("backup_path", v).apply()
 
+    var geminiApiKey: String
+        get() = prefs.getString("gemini_api_key", "") ?: ""
+        set(v) = prefs.edit().putString("gemini_api_key", v).apply()
+
     fun isConfigured() = baseUrl.isNotBlank() && token.isNotBlank()
 
     fun toConfig() = HomeAssistantConfig(baseUrl, token)
