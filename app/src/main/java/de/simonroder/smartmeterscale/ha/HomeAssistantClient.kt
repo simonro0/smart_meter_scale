@@ -11,19 +11,26 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
-class HomeAssistantClient(private val config: HomeAssistantConfig) {
+class HomeAssistantClient(
+    private val config: HomeAssistantConfig,
+    private val mqttConfig: MqttConfig? = null
+) {
 
     private val client = OkHttpClient()
     private val jsonMediaType = "application/json".toMediaType()
 
     fun sendScaleReading(reading: ScaleReading, user: User? = null, capturedAt: String? = null) {
         val suffix = user?.entitySuffix() ?: ""
-        postState("sensor.scale_weight$suffix", reading.weightKg.toString(), "kg", null, "measurement", capturedAt)
-        reading.bodyFatPercent?.let {
-            postState("sensor.scale_body_fat$suffix", it.toString(), "%", null, "measurement", capturedAt)
-        }
-        reading.bodyWaterPercent?.let {
-            postState("sensor.scale_body_water$suffix", it.toString(), "%", null, "measurement", capturedAt)
+        if (mqttConfig != null) {
+            MqttDiscoveryClient(mqttConfig).publishScaleReading(reading, user)
+        } else {
+            postState("sensor.scale_weight$suffix", reading.weightKg.toString(), "kg", null, "measurement", capturedAt)
+            reading.bodyFatPercent?.let {
+                postState("sensor.scale_body_fat$suffix", it.toString(), "%", null, "measurement", capturedAt)
+            }
+            reading.bodyWaterPercent?.let {
+                postState("sensor.scale_body_water$suffix", it.toString(), "%", null, "measurement", capturedAt)
+            }
         }
 
         if (capturedAt != null) {
@@ -38,14 +45,18 @@ class HomeAssistantClient(private val config: HomeAssistantConfig) {
     }
 
     fun sendMeterReading(value: Double, meterType: MeterType, capturedAt: String? = null) {
-        postState(
-            "sensor.${meterType.entityBase}",
-            value.toString(),
-            meterType.unit,
-            meterType.deviceClass,
-            meterType.stateClass,
-            capturedAt
-        )
+        if (mqttConfig != null) {
+            MqttDiscoveryClient(mqttConfig).publishMeter(meterType, value)
+        } else {
+            postState(
+                "sensor.${meterType.entityBase}",
+                value.toString(),
+                meterType.unit,
+                meterType.deviceClass,
+                meterType.stateClass,
+                capturedAt
+            )
+        }
         if (capturedAt != null) {
             tryImportStatistic("sensor.${meterType.entityBase}", meterType.unit, value, capturedAt, meterType.stateClass)
         }

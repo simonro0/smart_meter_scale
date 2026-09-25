@@ -204,7 +204,10 @@ fun ResultScreen(
                             scope.launch {
                                 sendStatus = "Wird gesendet…"
                                 try {
-                                    val client = HomeAssistantClient(haPrefs.toConfig())
+                                    val client = HomeAssistantClient(
+                                        haPrefs.toConfig(),
+                                        if (haPrefs.isMqttConfigured()) haPrefs.toMqttConfig() else null
+                                    )
                                     withContext(Dispatchers.IO) {
                                         if (meterType == MeterType.Scale && scaleReading != null) {
                                             client.sendScaleReading(scaleReading, selectedUser, capturedAt)

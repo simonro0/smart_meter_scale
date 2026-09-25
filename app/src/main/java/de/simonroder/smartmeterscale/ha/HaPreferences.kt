@@ -26,7 +26,27 @@ class HaPreferences(context: Context) {
         get() = prefs.getString("gemini_api_key", "") ?: ""
         set(v) = prefs.edit().putString("gemini_api_key", v).apply()
 
+    var mqttHost: String
+        get() = prefs.getString("mqtt_host", "") ?: ""
+        set(v) = prefs.edit().putString("mqtt_host", v).apply()
+
+    var mqttPort: Int
+        get() = prefs.getInt("mqtt_port", 1883)
+        set(v) = prefs.edit().putInt("mqtt_port", v).apply()
+
+    var mqttUsername: String
+        get() = prefs.getString("mqtt_username", "") ?: ""
+        set(v) = prefs.edit().putString("mqtt_username", v).apply()
+
+    var mqttPassword: String
+        get() = prefs.getString("mqtt_password", "") ?: ""
+        set(v) = prefs.edit().putString("mqtt_password", v).apply()
+
     fun isConfigured() = baseUrl.isNotBlank() && token.isNotBlank()
 
+    fun isMqttConfigured() = mqttHost.isNotBlank()
+
     fun toConfig() = HomeAssistantConfig(baseUrl, token)
+
+    fun toMqttConfig() = MqttConfig(mqttHost, mqttPort, mqttUsername, mqttPassword)
 }

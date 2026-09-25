@@ -34,6 +34,10 @@ fun SettingsScreen(onBack: () -> Unit) {
     var token by remember { mutableStateOf(haPrefs.token) }
     var backupPath by remember { mutableStateOf(haPrefs.backupPath) }
     var geminiApiKey by remember { mutableStateOf(haPrefs.geminiApiKey) }
+    var mqttHost by remember { mutableStateOf(haPrefs.mqttHost) }
+    var mqttPort by remember { mutableStateOf(haPrefs.mqttPort.toString()) }
+    var mqttUsername by remember { mutableStateOf(haPrefs.mqttUsername) }
+    var mqttPassword by remember { mutableStateOf(haPrefs.mqttPassword) }
     var saved by remember { mutableStateOf(false) }
     var users by remember { mutableStateOf(userPrefs.getUsers()) }
     var newUserName by remember { mutableStateOf("") }
@@ -102,6 +106,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                     haPrefs.token = token.trim()
                     haPrefs.backupPath = backupPath.trim()
                     haPrefs.geminiApiKey = geminiApiKey.trim()
+                    haPrefs.mqttHost = mqttHost.trim()
+                    haPrefs.mqttPort = mqttPort.trim().toIntOrNull() ?: 1883
+                    haPrefs.mqttUsername = mqttUsername.trim()
+                    haPrefs.mqttPassword = mqttPassword
                     saved = true
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -119,6 +127,54 @@ fun SettingsScreen(onBack: () -> Unit) {
                 onValueChange = { geminiApiKey = it; saved = false },
                 label = { Text("Gemini API Key") },
                 supportingText = { Text("Kostenloser Key unter aistudio.google.com → \"Get API key\". Wenn eingetragen, wird Gemini statt ML Kit für die Texterkennung verwendet — deutlich zuverlässiger für LCD-Anzeigen.") },
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true
+            )
+
+            HorizontalDivider()
+
+            // --- MQTT ---
+            Text("MQTT (optional)", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Erfordert Mosquitto Add-on in HA. Wenn konfiguriert, überleben Sensoren HA-Neustarts. Leer lassen = REST-Fallback (altes Verhalten).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+
+            OutlinedTextField(
+                value = mqttHost,
+                onValueChange = { mqttHost = it; saved = false },
+                label = { Text("MQTT Host") },
+                placeholder = { Text("192.168.1.x oder homeassistant.local") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = mqttPort,
+                    onValueChange = { mqttPort = it; saved = false },
+                    label = { Text("Port") },
+                    modifier = Modifier.width(100.dp),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = mqttUsername,
+                    onValueChange = { mqttUsername = it; saved = false },
+                    label = { Text("Benutzername") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+            }
+
+            OutlinedTextField(
+                value = mqttPassword,
+                onValueChange = { mqttPassword = it; saved = false },
+                label = { Text("MQTT Passwort") },
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true
