@@ -100,23 +100,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 singleLine = true
             )
 
-            Button(
-                onClick = {
-                    haPrefs.baseUrl = baseUrl.trimEnd('/')
-                    haPrefs.token = token.trim()
-                    haPrefs.backupPath = backupPath.trim()
-                    haPrefs.geminiApiKey = geminiApiKey.trim()
-                    haPrefs.mqttHost = mqttHost.trim()
-                    haPrefs.mqttPort = mqttPort.trim().toIntOrNull() ?: 1883
-                    haPrefs.mqttUsername = mqttUsername.trim()
-                    haPrefs.mqttPassword = mqttPassword
-                    saved = true
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Speichern") }
-
-            if (saved) Text("Gespeichert.", color = MaterialTheme.colorScheme.primary)
-
             HorizontalDivider()
 
             // --- Gemini OCR ---
@@ -251,6 +234,25 @@ fun SettingsScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )
+
+            HorizontalDivider()
+
+            Button(
+                onClick = {
+                    haPrefs.baseUrl = baseUrl.trimEnd('/')
+                    haPrefs.token = token.trim()
+                    haPrefs.backupPath = backupPath.trim()
+                    haPrefs.geminiApiKey = geminiApiKey.trim()
+                    haPrefs.mqttHost = mqttHost.trim()
+                    haPrefs.mqttPort = mqttPort.trim().toIntOrNull() ?: 1883
+                    haPrefs.mqttUsername = mqttUsername.trim()
+                    haPrefs.mqttPassword = mqttPassword
+                    saved = true
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Speichern") }
+
+            if (saved) Text("Gespeichert.", color = MaterialTheme.colorScheme.primary)
         }
     }
 }
