@@ -38,12 +38,12 @@ class MqttDiscoveryClient(private val config: MqttConfig) {
         val suffix = user?.entitySuffix() ?: ""
         val label = user?.name?.replaceFirstChar { it.uppercase() }?.let { " $it" } ?: ""
         withClient { client ->
-            publishSensor(client, "scale_weight$suffix", "Gewicht$label", "kg", null, "measurement", reading.weightKg.toString())
+            publishSensor(client, "scale_weight$suffix", "Weight$label", "kg", null, "measurement", reading.weightKg.toString())
             reading.bodyFatPercent?.let {
-                publishSensor(client, "scale_body_fat$suffix", "Körperfett$label", "%", null, "measurement", it.toString())
+                publishSensor(client, "scale_body_fat$suffix", "Body Fat$label", "%", null, "measurement", it.toString())
             }
             reading.bodyWaterPercent?.let {
-                publishSensor(client, "scale_body_water$suffix", "Körperwasser$label", "%", null, "measurement", it.toString())
+                publishSensor(client, "scale_body_water$suffix", "Body Water$label", "%", null, "measurement", it.toString())
             }
         }
     }
