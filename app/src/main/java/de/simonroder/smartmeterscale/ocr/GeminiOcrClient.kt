@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 
 class GeminiRateLimitException(message: String) : Exception(message)
 
-class GeminiOcrClient(private val apiKey: String) {
+class GeminiOcrClient(private val apiKey: String, private val model: String = "gemini-3.6-flash") {
 
     companion object {
         private val client = OkHttpClient.Builder()
@@ -22,7 +22,6 @@ class GeminiOcrClient(private val apiKey: String) {
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
 
-        private const val MODEL = "gemini-3.6-flash"
         private const val MAX_RETRIES = 2
     }
 
@@ -85,7 +84,7 @@ class GeminiOcrClient(private val apiKey: String) {
         val body = buildRequestBody(base64, prompt, systemInstructionFor(meterType))
 
         val request = Request.Builder()
-            .url("https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$apiKey")
+            .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey")
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
 

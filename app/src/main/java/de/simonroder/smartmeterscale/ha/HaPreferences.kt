@@ -26,6 +26,10 @@ class HaPreferences(context: Context) {
         get() = prefs.getString("gemini_api_key", "") ?: ""
         set(v) = prefs.edit().putString("gemini_api_key", v).apply()
 
+    var geminiModel: String
+        get() = prefs.getString("gemini_model", "gemini-3.6-flash") ?: "gemini-3.6-flash"
+        set(v) = prefs.edit().putString("gemini_model", v).apply()
+
     var mqttHost: String
         get() = prefs.getString("mqtt_host", "") ?: ""
         set(v) = prefs.edit().putString("mqtt_host", v).apply()

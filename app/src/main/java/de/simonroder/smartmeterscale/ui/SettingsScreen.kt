@@ -34,6 +34,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     var token by remember { mutableStateOf(haPrefs.token) }
     var backupPath by remember { mutableStateOf(haPrefs.backupPath) }
     var geminiApiKey by remember { mutableStateOf(haPrefs.geminiApiKey) }
+    var geminiModel by remember { mutableStateOf(haPrefs.geminiModel) }
     var mqttHost by remember { mutableStateOf(haPrefs.mqttHost) }
     var mqttPort by remember { mutableStateOf(haPrefs.mqttPort.toString()) }
     var mqttUsername by remember { mutableStateOf(haPrefs.mqttUsername) }
@@ -112,6 +113,16 @@ fun SettingsScreen(onBack: () -> Unit) {
                 supportingText = { Text("Kostenloser Key unter aistudio.google.com → \"Get API key\". Wenn eingetragen, wird Gemini statt ML Kit für die Texterkennung verwendet — deutlich zuverlässiger für LCD-Anzeigen.") },
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = PasswordVisualTransformation(),
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value = geminiModel,
+                onValueChange = { geminiModel = it; saved = false },
+                label = { Text("Gemini Model") },
+                placeholder = { Text("gemini-3.6-flash") },
+                supportingText = { Text("Model ID from Google AI Studio. Default: gemini-3.6-flash") },
+                modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
 
@@ -243,6 +254,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     haPrefs.token = token.trim()
                     haPrefs.backupPath = backupPath.trim()
                     haPrefs.geminiApiKey = geminiApiKey.trim()
+                    haPrefs.geminiModel = geminiModel.trim().ifBlank { "gemini-3.6-flash" }
                     haPrefs.mqttHost = mqttHost.trim()
                     haPrefs.mqttPort = mqttPort.trim().toIntOrNull() ?: 1883
                     haPrefs.mqttUsername = mqttUsername.trim()

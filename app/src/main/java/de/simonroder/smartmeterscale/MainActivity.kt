@@ -250,10 +250,11 @@ class MainActivity : ComponentActivity() {
         mlKitProcessor: OcrProcessor,
         parser: OcrValueParser
     ): Screen.Result {
-        val geminiKey = HaPreferences(this).geminiApiKey
+        val haPrefs = HaPreferences(this)
+        val geminiKey = haPrefs.geminiApiKey
         if (geminiKey.isNotBlank()) {
             try {
-                return processWithGemini(bitmap, imagePath, type, geminiKey, parser)
+                return processWithGemini(bitmap, imagePath, type, geminiKey, haPrefs.geminiModel, parser)
             } catch (e: GeminiRateLimitException) {
                 Log.w("SmartMeter", "Gemini rate limit — falling back to ML Kit")
                 val result = processWithMlKit(bitmap, imagePath, type, mlKitProcessor, parser)
@@ -285,10 +286,11 @@ class MainActivity : ComponentActivity() {
         imagePath: String?,
         type: MeterType,
         apiKey: String,
+        model: String,
         parser: OcrValueParser
     ): Screen.Result {
         return try {
-            val gemini = GeminiOcrClient(apiKey)
+            val gemini = GeminiOcrClient(apiKey, model)
             val response = withContext(Dispatchers.IO) { gemini.recognizeText(bitmap, type) }
             Log.d("SmartMeter", "Gemini OCR [${type.name}]: $response")
             if (type == MeterType.Scale) {
