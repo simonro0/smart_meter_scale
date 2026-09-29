@@ -46,6 +46,11 @@ class HaPreferences(context: Context) {
         get() = prefs.getString("mqtt_password", "") ?: ""
         set(v) = prefs.edit().putString("mqtt_password", v).apply()
 
+    // "system" | "light" | "dark"
+    var themeMode: String
+        get() = prefs.getString("theme_mode", "system") ?: "system"
+        set(v) = prefs.edit().putString("theme_mode", v).apply()
+
     fun isConfigured() = baseUrl.isNotBlank() && token.isNotBlank()
 
     fun isMqttConfigured() = mqttHost.isNotBlank()

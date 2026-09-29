@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.runtime.MutableState
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -26,11 +27,15 @@ import de.simonroder.smartmeterscale.ha.UserPreferences
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(
+    themeModeState: MutableState<String>,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
     val haPrefs = remember { HaPreferences(context) }
     val userPrefs = remember { UserPreferences(context) }
 
+    var themeMode by themeModeState
     var baseUrl by remember { mutableStateOf(haPrefs.baseUrl) }
     var token by remember { mutableStateOf(haPrefs.token) }
     var backupPath by remember { mutableStateOf(haPrefs.backupPath) }
@@ -80,6 +85,21 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            SettingsSection("Appearance") {
+                Text("Theme", style = MaterialTheme.typography.bodyMedium)
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    listOf("System" to "system", "Light" to "light", "Dark" to "dark")
+                        .forEachIndexed { i, (label, value) ->
+                            SegmentedButton(
+                                selected = themeMode == value,
+                                onClick = { themeMode = value; saved = false },
+                                shape = SegmentedButtonDefaults.itemShape(i, 3),
+                                label = { Text(label) }
+                            )
+                        }
+                }
+            }
+
             SettingsSection("Home Assistant") {
                 OutlinedTextField(
                     value = baseUrl,
@@ -231,6 +251,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
             Button(
                 onClick = {
+                    haPrefs.themeMode = themeMode
                     haPrefs.baseUrl = baseUrl.trimEnd('/')
                     haPrefs.token = token.trim()
                     haPrefs.backupPath = backupPath.trim()

@@ -59,6 +59,7 @@ private data class RetransmitDialogInfo(
 class MainActivity : ComponentActivity() {
 
     private val shortcutTypeState = mutableStateOf<MeterType?>(null)
+    private val themeModeState = mutableStateOf("system")
 
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -67,8 +68,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        themeModeState.value = HaPreferences(this).themeMode
         shortcutTypeState.value = intent.getShortcutMeterType()
-        setContent { SmartMeterScaleTheme { AppContent(shortcutTypeState) } }
+        setContent {
+            val darkTheme = when (themeModeState.value) {
+                "dark" -> true
+                "light" -> false
+                else -> androidx.compose.foundation.isSystemInDarkTheme()
+            }
+            SmartMeterScaleTheme(darkTheme = darkTheme) {
+                AppContent(shortcutTypeState, themeModeState)
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -78,7 +89,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun AppContent(shortcutTypeState: MutableState<MeterType?>) {
+    private fun AppContent(shortcutTypeState: MutableState<MeterType?>, themeModeState: MutableState<String>) {
         var screen by remember { mutableStateOf<Screen>(Screen.Home) }
         var pendingMeterType by remember { mutableStateOf<MeterType?>(null) }
         val mlKitProcessor = remember { OcrProcessor() }
@@ -269,7 +280,10 @@ class MainActivity : ComponentActivity() {
                 onSendSuccess = { record -> history.save(record) },
                 onBack = { screen = Screen.Home }
             )
-            is Screen.Settings -> SettingsScreen(onBack = { screen = Screen.Home })
+            is Screen.Settings -> SettingsScreen(
+                themeModeState = themeModeState,
+                onBack = { screen = Screen.Home }
+            )
         }
     }
 
