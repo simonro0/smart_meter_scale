@@ -2,7 +2,6 @@ package de.simonroder.smartmeterscale.ui
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Matrix
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -14,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -21,7 +21,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import java.util.concurrent.Executor
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CameraScreen(
     onImageCaptured: (Bitmap, Int) -> Unit,
@@ -37,39 +36,43 @@ fun CameraScreen(
         imageCapture = bindCamera(context, lifecycleOwner, previewView, executor)
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Foto aufnehmen") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
-                    }
-                }
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(8.dp)
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = Color.White
             )
         }
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
 
-            FloatingActionButton(
-                onClick = {
-                    imageCapture?.takePicture(executor, object : ImageCapture.OnImageCapturedCallback() {
-                        override fun onCaptureSuccess(image: ImageProxy) {
-                            val bitmap = image.toBitmap()
-                            val rotation = image.imageInfo.rotationDegrees
-                            image.close()
-                            onImageCaptured(bitmap, rotation)
-                        }
-                        override fun onError(exception: ImageCaptureException) {
-                            exception.printStackTrace()
-                        }
-                    })
-                },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(32.dp)
-            ) {
-                Icon(Icons.Default.PhotoCamera, contentDescription = "Aufnehmen")
-            }
+        FloatingActionButton(
+            onClick = {
+                imageCapture?.takePicture(executor, object : ImageCapture.OnImageCapturedCallback() {
+                    override fun onCaptureSuccess(image: ImageProxy) {
+                        val bitmap = image.toBitmap()
+                        val rotation = image.imageInfo.rotationDegrees
+                        image.close()
+                        onImageCaptured(bitmap, rotation)
+                    }
+                    override fun onError(exception: ImageCaptureException) {
+                        exception.printStackTrace()
+                    }
+                })
+            },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 32.dp)
+        ) {
+            Icon(Icons.Default.PhotoCamera, contentDescription = "Capture")
         }
     }
 }

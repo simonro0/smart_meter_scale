@@ -354,13 +354,14 @@ fun ResultScreen(
 @Composable
 private fun ReadingCard(label: String, value: String) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
-            Text(value, style = MaterialTheme.typography.headlineSmall)
+        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.outline
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(value, style = MaterialTheme.typography.displaySmall)
         }
     }
 }

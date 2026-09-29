@@ -47,7 +47,6 @@ fun SettingsScreen(onBack: () -> Unit) {
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         uri?.let {
-            // Persist read+write permission across app restarts
             context.contentResolver.takePersistableUriPermission(
                 it,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
@@ -61,10 +60,10 @@ fun SettingsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Einstellungen") },
+                title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -74,179 +73,158 @@ fun SettingsScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // --- Home Assistant ---
-            Text("Home Assistant", style = MaterialTheme.typography.titleMedium)
-
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it; saved = false },
-                label = { Text("Base URL") },
-                placeholder = { Text("https://yourname.duckdns.org") },
-                supportingText = { Text("Die externe Adresse deiner HA-Instanz (DuckDNS, Nabu Casa o.ä.)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            OutlinedTextField(
-                value = token,
-                onValueChange = { token = it; saved = false },
-                label = { Text("Long-Lived Access Token") },
-                supportingText = { Text("HA → Profil → Sicherheit → Token erstellen") },
-                modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true
-            )
-
-            HorizontalDivider()
-
-            // --- Gemini OCR ---
-            Text("Gemini OCR (optional)", style = MaterialTheme.typography.titleMedium)
-
-            OutlinedTextField(
-                value = geminiApiKey,
-                onValueChange = { geminiApiKey = it; saved = false },
-                label = { Text("Gemini API Key") },
-                supportingText = { Text("Kostenloser Key unter aistudio.google.com → \"Get API key\". Wenn eingetragen, wird Gemini statt ML Kit für die Texterkennung verwendet — deutlich zuverlässiger für LCD-Anzeigen.") },
-                modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true
-            )
-
-            OutlinedTextField(
-                value = geminiModel,
-                onValueChange = { geminiModel = it; saved = false },
-                label = { Text("Gemini Model") },
-                placeholder = { Text("gemini-3.6-flash") },
-                supportingText = { Text("Model ID from Google AI Studio. Default: gemini-3.6-flash") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            HorizontalDivider()
-
-            // --- MQTT ---
-            Text("MQTT (optional)", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Erfordert Mosquitto Add-on in HA. Wenn konfiguriert, überleben Sensoren HA-Neustarts. Leer lassen = REST-Fallback (altes Verhalten).",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline
-            )
-
-            OutlinedTextField(
-                value = mqttHost,
-                onValueChange = { mqttHost = it; saved = false },
-                label = { Text("MQTT Host") },
-                placeholder = { Text("192.168.1.x oder homeassistant.local") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            SettingsSection("Home Assistant") {
                 OutlinedTextField(
-                    value = mqttPort,
-                    onValueChange = { mqttPort = it; saved = false },
-                    label = { Text("Port") },
-                    modifier = Modifier.width(100.dp),
+                    value = baseUrl,
+                    onValueChange = { baseUrl = it; saved = false },
+                    label = { Text("Base URL") },
+                    placeholder = { Text("https://yourname.duckdns.org") },
+                    supportingText = { Text("External address of your HA instance") },
+                    modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
                 OutlinedTextField(
-                    value = mqttUsername,
-                    onValueChange = { mqttUsername = it; saved = false },
-                    label = { Text("Benutzername") },
-                    modifier = Modifier.weight(1f),
+                    value = token,
+                    onValueChange = { token = it; saved = false },
+                    label = { Text("Long-Lived Access Token") },
+                    supportingText = { Text("HA → Profile → Security → Create token") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = PasswordVisualTransformation(),
                     singleLine = true
                 )
             }
 
-            OutlinedTextField(
-                value = mqttPassword,
-                onValueChange = { mqttPassword = it; saved = false },
-                label = { Text("MQTT Passwort") },
-                modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true
-            )
+            SettingsSection("Gemini OCR (optional)") {
+                OutlinedTextField(
+                    value = geminiApiKey,
+                    onValueChange = { geminiApiKey = it; saved = false },
+                    label = { Text("API Key") },
+                    supportingText = { Text("Free key at aistudio.google.com → \"Get API key\". Much more reliable than ML Kit for LCD displays.") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = geminiModel,
+                    onValueChange = { geminiModel = it; saved = false },
+                    label = { Text("Model") },
+                    placeholder = { Text("gemini-3.6-flash") },
+                    supportingText = { Text("Model ID from Google AI Studio") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
 
-            HorizontalDivider()
-
-            // --- Backup-Ordner ---
-            Text("Backup / Syncthing", style = MaterialTheme.typography.titleMedium)
-
-            OutlinedTextField(
-                value = backupPath,
-                onValueChange = { backupPath = it; saved = false },
-                label = { Text("Backup-Ordner (optional)") },
-                placeholder = { Text("/storage/emulated/0/SmartMeter") },
-                supportingText = { Text("Aufnahmen werden zusätzlich hier gespeichert und können per Syncthing synchronisiert werden.") },
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = {
-                    IconButton(onClick = { folderPickerLauncher.launch(null) }) {
-                        Icon(Icons.Default.Folder, contentDescription = "Ordner auswählen")
-                    }
-                },
-                singleLine = true
-            )
-
-            HorizontalDivider()
-
-            // --- Nutzer ---
-            Text("Waagen-Nutzer", style = MaterialTheme.typography.titleMedium)
-
-            users.forEach { user ->
+            SettingsSection("MQTT (optional)") {
+                Text(
+                    "Requires Mosquitto add-on in HA. Sensors survive HA restarts. Leave empty for REST fallback.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                OutlinedTextField(
+                    value = mqttHost,
+                    onValueChange = { mqttHost = it; saved = false },
+                    label = { Text("Host") },
+                    placeholder = { Text("192.168.1.x or homeassistant.local") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(user.name, style = MaterialTheme.typography.bodyLarge)
-                    IconButton(onClick = {
-                        userPrefs.removeUser(user.id)
-                        users = userPrefs.getUsers()
-                    }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Entfernen")
-                    }
+                    OutlinedTextField(
+                        value = mqttPort,
+                        onValueChange = { mqttPort = it; saved = false },
+                        label = { Text("Port") },
+                        modifier = Modifier.width(100.dp),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = mqttUsername,
+                        onValueChange = { mqttUsername = it; saved = false },
+                        label = { Text("Username") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
                 }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
                 OutlinedTextField(
-                    value = newUserName,
-                    onValueChange = { newUserName = it },
-                    label = { Text("Neuer Nutzer") },
-                    modifier = Modifier.weight(1f),
+                    value = mqttPassword,
+                    onValueChange = { mqttPassword = it; saved = false },
+                    label = { Text("Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = PasswordVisualTransformation(),
                     singleLine = true
                 )
-                IconButton(
-                    onClick = {
-                        if (newUserName.isNotBlank()) {
-                            userPrefs.addUser(newUserName)
-                            users = userPrefs.getUsers()
-                            newUserName = ""
-                        }
-                    }
-                ) {
-                    Icon(Icons.Default.PersonAdd, contentDescription = "Hinzufügen")
-                }
             }
 
-            Text(
-                "Sensor-IDs: sensor.scale_weight_vorname (Waage), sensor.gas_meter, sensor.electricity_meter, sensor.water_meter",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline
-            )
+            SettingsSection("Backup / Syncthing") {
+                OutlinedTextField(
+                    value = backupPath,
+                    onValueChange = { backupPath = it; saved = false },
+                    label = { Text("Backup folder (optional)") },
+                    placeholder = { Text("/storage/emulated/0/SmartMeter") },
+                    supportingText = { Text("Captures are also saved here for Syncthing sync.") },
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        IconButton(onClick = { folderPickerLauncher.launch(null) }) {
+                            Icon(Icons.Default.Folder, contentDescription = "Pick folder")
+                        }
+                    },
+                    singleLine = true
+                )
+            }
 
-            HorizontalDivider()
+            SettingsSection("Scale Users") {
+                Text(
+                    "Entity IDs: sensor.scale_weight_<name>, sensor.gas_meter, sensor.electricity_meter, sensor.water_meter",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                users.forEach { user ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(user.name, style = MaterialTheme.typography.bodyLarge)
+                        IconButton(onClick = {
+                            userPrefs.removeUser(user.id)
+                            users = userPrefs.getUsers()
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Remove")
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = newUserName,
+                        onValueChange = { newUserName = it },
+                        label = { Text("New user") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    IconButton(
+                        onClick = {
+                            if (newUserName.isNotBlank()) {
+                                userPrefs.addUser(newUserName)
+                                users = userPrefs.getUsers()
+                                newUserName = ""
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.PersonAdd, contentDescription = "Add")
+                    }
+                }
+            }
 
             Button(
                 onClick = {
@@ -262,9 +240,34 @@ fun SettingsScreen(onBack: () -> Unit) {
                     saved = true
                 },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Speichern") }
+            ) { Text("Save") }
 
-            if (saved) Text("Gespeichert.", color = MaterialTheme.colorScheme.primary)
+            if (saved) {
+                Text(
+                    "Saved.",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            content()
         }
     }
 }
@@ -273,10 +276,6 @@ private fun Uri.toFilePath(): String? {
     return try {
         val docId = DocumentsContract.getTreeDocumentId(this)
         val parts = docId.split(":")
-        if (parts.size >= 2 && parts[0] == "primary") {
-            "/storage/emulated/0/${parts[1]}"
-        } else null
-    } catch (e: Exception) {
-        null
-    }
+        if (parts.size >= 2 && parts[0] == "primary") "/storage/emulated/0/${parts[1]}" else null
+    } catch (e: Exception) { null }
 }
