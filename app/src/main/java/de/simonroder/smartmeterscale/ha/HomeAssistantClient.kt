@@ -15,8 +15,10 @@ class HomeAssistantClient(
     private val config: HomeAssistantConfig,
     private val mqttConfig: MqttConfig? = null
 ) {
+    companion object {
+        private val client = OkHttpClient()
+    }
 
-    private val client = OkHttpClient()
     private val jsonMediaType = "application/json".toMediaType()
 
     fun sendScaleReading(reading: ScaleReading, user: User? = null, capturedAt: String? = null) {

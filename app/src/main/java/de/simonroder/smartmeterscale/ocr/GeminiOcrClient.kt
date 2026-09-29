@@ -16,10 +16,15 @@ class GeminiRateLimitException(message: String) : Exception(message)
 
 class GeminiOcrClient(private val apiKey: String) {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
+    companion object {
+        private val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
+
+        private const val MODEL = "gemini-3.6-flash"
+        private const val MAX_RETRIES = 2
+    }
 
     private val scalePrompt = """
         What values are shown on this body scale display?
@@ -80,27 +85,38 @@ class GeminiOcrClient(private val apiKey: String) {
         val body = buildRequestBody(base64, prompt, systemInstructionFor(meterType))
 
         val request = Request.Builder()
-            .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=$apiKey")
+            .url("https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent?key=$apiKey")
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
-        client.newCall(request).execute().use { response ->
-            if (response.code == 429) {
-                throw GeminiRateLimitException("Gemini-Limit erreicht (5 RPM / 20 RPD). Fallback auf ML Kit.")
+        var lastError: Exception? = null
+        repeat(MAX_RETRIES + 1) { attempt ->
+            client.newCall(request).execute().use { response ->
+                when {
+                    response.code == 429 ->
+                        throw GeminiRateLimitException("Gemini-Limit erreicht (5 RPM / 20 RPD). Fallback auf ML Kit.")
+                    response.code == 503 && attempt < MAX_RETRIES -> {
+                        lastError = IllegalStateException("Gemini API error ${response.code}: ${response.body?.string()}")
+                        Thread.sleep(2000L * (attempt + 1))
+                        return@use
+                    }
+                    !response.isSuccessful ->
+                        throw IllegalStateException("Gemini API error ${response.code}: ${response.body?.string()}")
+                    else -> {
+                        val json = JSONObject(response.body?.string() ?: "")
+                        return json
+                            .getJSONArray("candidates")
+                            .getJSONObject(0)
+                            .getJSONObject("content")
+                            .getJSONArray("parts")
+                            .getJSONObject(0)
+                            .getString("text")
+                            .trim()
+                    }
+                }
             }
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Gemini API error ${response.code}: ${response.body?.string()}")
-            }
-            val json = JSONObject(response.body?.string() ?: "")
-            return json
-                .getJSONArray("candidates")
-                .getJSONObject(0)
-                .getJSONObject("content")
-                .getJSONArray("parts")
-                .getJSONObject(0)
-                .getString("text")
-                .trim()
         }
+        throw lastError ?: IllegalStateException("Gemini request failed after retries")
     }
 
     private fun buildRequestBody(base64Image: String, prompt: String, systemInstructionText: String): JSONObject {

@@ -1,6 +1,7 @@
 package de.simonroder.smartmeterscale.ocr
 
 import de.simonroder.smartmeterscale.data.ScaleReading
+import kotlin.math.abs
 
 class OcrValueParser {
 
@@ -67,7 +68,7 @@ class OcrValueParser {
         // Fallback: first % value in water range that differs enough from fat
         return PERCENT_VALUE.findAll(cleaned)
             .mapNotNull { it.groupValues[1].replace(',', '.').toDoubleOrNull() }
-            .filter { it in 30.0..80.0 && (fat == null || Math.abs(it - fat) > 2.0) }
+            .filter { it in 30.0..80.0 && (fat == null || abs(it - fat) > 2.0) }
             .firstOrNull()
     }
 
