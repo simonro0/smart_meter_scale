@@ -38,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.exifinterface.media.ExifInterface
 import java.io.FileDescriptor
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -97,7 +98,7 @@ class MainActivity : ComponentActivity() {
                     return
                 }
                 val pair = withContext(Dispatchers.IO) {
-                    pfd.use { copyFdToMedia(it.fileDescriptor) }
+                    pfd.use { copyFdToMedia(it.fileDescriptor, capturedAt) }
                 }
                 if (pair == null) {
                     screen = Screen.Result(type, null, null, null,
@@ -366,7 +367,7 @@ class MainActivity : ComponentActivity() {
     // inSampleSize) without needing to seek or re-open the stream.
     // Note: FileInputStream(fd) does NOT close the FD when the stream is closed/GCed,
     // since the FD is owned externally by the ParcelFileDescriptor.
-    private fun copyFdToMedia(fd: FileDescriptor): Pair<String, Bitmap>? {
+    private fun copyFdToMedia(fd: FileDescriptor, capturedAt: String? = null): Pair<String, Bitmap>? {
         val imageBytes = try {
             FileInputStream(fd).readBytes()
         } catch (e: Exception) {
@@ -404,7 +405,8 @@ class MainActivity : ComponentActivity() {
         }
         Log.d("SmartMeter", "Gallery decoded: ${bitmap.width}×${bitmap.height} (sampleSize=$sampleSize)")
 
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val timestamp = capturedAt?.let { isoToFileTimestamp(it) }
+            ?: SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val file = File(capturesDir(), "${timestamp}_gallery.jpg")
         try {
             FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
@@ -422,17 +424,53 @@ class MainActivity : ComponentActivity() {
         return s
     }
 
-    private fun readGalleryTimestamp(uri: Uri): String? = try {
-        val projection = arrayOf(MediaStore.Images.Media.DATE_TAKEN)
-        contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val millis = cursor.getLong(0)
-                if (millis > 0) millisToIso(millis) else null
-            } else null
+    private fun readGalleryTimestamp(uri: Uri): String? {
+        // 1. EXIF DateTimeOriginal — most accurate for camera shots
+        try {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                val exif = ExifInterface(stream)
+                val tag = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
+                    ?: exif.getAttribute(ExifInterface.TAG_DATETIME_DIGITIZED)
+                    ?: exif.getAttribute(ExifInterface.TAG_DATETIME)
+                if (!tag.isNullOrBlank()) {
+                    val sdf = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.getDefault())
+                    sdf.timeZone = java.util.TimeZone.getDefault()
+                    sdf.parse(tag)?.let { return millisToIso(it.time) }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("SmartMeter", "EXIF read failed for $uri: ${e.message}")
         }
-    } catch (e: Exception) {
-        Log.w("SmartMeter", "readGalleryTimestamp: ${e.message}")
-        null
+
+        // 2. Parse yyyyMMdd_HHmmss from filename (common for Syncthing-synced files)
+        try {
+            contentResolver.query(uri, arrayOf(MediaStore.Images.Media.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    parseTimestampFromFilename(c.getString(0) ?: "")?.let { return millisToIso(it) }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("SmartMeter", "Filename timestamp parse failed: ${e.message}")
+        }
+
+        // 3. MediaStore DATE_TAKEN fallback
+        return try {
+            contentResolver.query(uri, arrayOf(MediaStore.Images.Media.DATE_TAKEN), null, null, null)?.use { c ->
+                if (c.moveToFirst()) { val ms = c.getLong(0); if (ms > 0) millisToIso(ms) else null } else null
+            }
+        } catch (e: Exception) {
+            Log.w("SmartMeter", "readGalleryTimestamp MediaStore: ${e.message}")
+            null
+        }
+    }
+
+    private fun parseTimestampFromFilename(name: String): Long? {
+        val match = Regex("(\\d{8})[_-](\\d{6})").find(name) ?: return null
+        return try {
+            val sdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+            sdf.timeZone = java.util.TimeZone.getDefault()
+            sdf.parse("${match.groupValues[1]}_${match.groupValues[2]}")?.time
+        } catch (e: Exception) { null }
     }
 
     private fun timestampsInSameHour(ts1: String, ts2: String): Boolean = try {
@@ -445,6 +483,13 @@ class MainActivity : ComponentActivity() {
         Instant.ofEpochMilli(millis)
             .atZone(ZoneId.systemDefault())
             .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+
+    private fun isoToFileTimestamp(iso: String): String = try {
+        val instant = java.time.OffsetDateTime.parse(iso).toInstant()
+        SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date.from(instant))
+    } catch (e: Exception) {
+        SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+    }
 
     private fun rotateBitmap(bitmap: Bitmap, degrees: Int): Bitmap {
         if (degrees == 0) return bitmap

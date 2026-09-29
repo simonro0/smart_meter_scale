@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.RotateLeft
 import androidx.compose.material.icons.automirrored.filled.RotateRight
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,11 +55,6 @@ fun ResultScreen(
     var selectedUser by remember { mutableStateOf<User?>(users.firstOrNull()) }
     var userMenuExpanded by remember { mutableStateOf(false) }
     var sendStatus by remember { mutableStateOf("") }
-    val isError = remember(rawOcrText) {
-        rawOcrText?.startsWith("Fehler") == true || rawOcrText?.startsWith("Gemini-Fehler") == true
-    }
-    var debugExpanded by remember(isError) { mutableStateOf(isError) }
-
     // Preview bitmap — reloaded from file after each rotation
     var thumbnail by remember { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(imagePath) {
@@ -216,7 +210,7 @@ fun ResultScreen(
                             }
                         }
                     }
-                } else if (isError && rawOcrText != null) {
+                } else if (rawOcrText?.startsWith("Fehler") == true) {
                     Text(
                         rawOcrText,
                         style = MaterialTheme.typography.bodyMedium,
@@ -316,43 +310,6 @@ fun ResultScreen(
                 Text("Neue Messung")
             }
 
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.BugReport,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                "OCR Debug",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                        TextButton(onClick = { debugExpanded = !debugExpanded }) {
-                            Text(if (debugExpanded) "Ausblenden" else "Anzeigen")
-                        }
-                    }
-                    if (debugExpanded) {
-                        HorizontalDivider()
-                        Text(
-                            text = if (rawOcrText.isNullOrBlank()) "(kein OCR-Text)" else rawOcrText,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                        )
-                    }
-                }
-            }
         }
     }
 }

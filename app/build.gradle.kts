@@ -72,6 +72,7 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.1")
 
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.json:json:20240303")
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
