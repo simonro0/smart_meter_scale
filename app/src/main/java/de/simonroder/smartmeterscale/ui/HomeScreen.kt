@@ -3,6 +3,7 @@ package de.simonroder.smartmeterscale.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -120,15 +121,11 @@ private fun MeterTypeCard(
         MeterType.Electricity -> Icons.Default.ElectricBolt
         MeterType.Water -> Icons.Default.Water
     }
-    val containerColor = if (selected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        when (type) {
-            MeterType.Scale -> MaterialTheme.colorScheme.surfaceVariant
-            MeterType.Gas -> MaterialTheme.colorScheme.tertiaryContainer
-            MeterType.Electricity -> MaterialTheme.colorScheme.secondaryContainer
-            MeterType.Water -> MaterialTheme.colorScheme.primaryContainer
-        }
+    val containerColor = when (type) {
+        MeterType.Scale -> MaterialTheme.colorScheme.surfaceVariant
+        MeterType.Gas -> MaterialTheme.colorScheme.tertiaryContainer
+        MeterType.Electricity -> MaterialTheme.colorScheme.secondaryContainer
+        MeterType.Water -> MaterialTheme.colorScheme.primaryContainer
     }
     val displayTime = remember(lastRecord?.timestamp) {
         lastRecord?.timestamp?.let { ts ->
@@ -142,6 +139,7 @@ private fun MeterTypeCard(
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
         modifier = Modifier
             .fillMaxWidth()
             .height(110.dp)

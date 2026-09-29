@@ -98,27 +98,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
 
-            SettingsSection("Gemini OCR (optional)") {
-                OutlinedTextField(
-                    value = geminiApiKey,
-                    onValueChange = { geminiApiKey = it; saved = false },
-                    label = { Text("API Key") },
-                    supportingText = { Text("Free key at aistudio.google.com → \"Get API key\". Much more reliable than ML Kit for LCD displays.") },
-                    modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = geminiModel,
-                    onValueChange = { geminiModel = it; saved = false },
-                    label = { Text("Model") },
-                    placeholder = { Text("gemini-3.6-flash") },
-                    supportingText = { Text("Model ID from Google AI Studio") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-            }
-
             SettingsSection("MQTT (optional)") {
                 Text(
                     "Requires Mosquitto add-on in HA. Sensors survive HA restarts. Leave empty for REST fallback.",
@@ -158,6 +137,27 @@ fun SettingsScreen(onBack: () -> Unit) {
                     label = { Text("Password") },
                     modifier = Modifier.fillMaxWidth(),
                     visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+            }
+
+            SettingsSection("Gemini OCR (optional)") {
+                OutlinedTextField(
+                    value = geminiApiKey,
+                    onValueChange = { geminiApiKey = it; saved = false },
+                    label = { Text("API Key") },
+                    supportingText = { Text("Free key at aistudio.google.com → \"Get API key\". Much more reliable than ML Kit for LCD displays.") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = geminiModel,
+                    onValueChange = { geminiModel = it; saved = false },
+                    label = { Text("Model") },
+                    placeholder = { Text("gemini-3.6-flash") },
+                    supportingText = { Text("Model ID from Google AI Studio") },
+                    modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
             }

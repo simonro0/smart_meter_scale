@@ -51,7 +51,8 @@ import java.util.Locale
 private data class RetransmitDialogInfo(
     val record: TransmissionRecord,
     val pendingMeterType: MeterType,
-    val isSameHour: Boolean
+    val isSameHour: Boolean,
+    val openGallery: Boolean = false
 )
 
 class MainActivity : ComponentActivity() {
@@ -149,6 +150,17 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        fun requestGalleryOrHistory(type: MeterType) {
+            val last = history.getLast(type)
+            if (last != null) {
+                pendingMeterType = type
+                retransmitDialog = RetransmitDialogInfo(last, type, history.isSameHour(last), openGallery = true)
+            } else {
+                pendingMeterType = type
+                galleryLauncher.launch("image/*")
+            }
+        }
+
         LaunchedEffect(shortcutTypeState.value) {
             val type = shortcutTypeState.value ?: return@LaunchedEffect
             shortcutTypeState.value = null
@@ -167,7 +179,12 @@ class MainActivity : ComponentActivity() {
                 },
                 onNewCapture = {
                     retransmitDialog = null
-                    openCameraForType(info.pendingMeterType)
+                    if (info.openGallery) {
+                        pendingMeterType = info.pendingMeterType
+                        galleryLauncher.launch("image/*")
+                    } else {
+                        openCameraForType(info.pendingMeterType)
+                    }
                 },
                 onDismiss = { retransmitDialog = null }
             )
@@ -176,13 +193,11 @@ class MainActivity : ComponentActivity() {
         when (val s = screen) {
             is Screen.Home -> HomeScreen(
                 onOpenCamera = { type -> requestCameraOrHistory(type) },
-                onOpenGallery = { type ->
-                    pendingMeterType = type
-                    galleryLauncher.launch("image/*")
-                },
+                onOpenGallery = { type -> requestGalleryOrHistory(type) },
                 onOpenSettings = { screen = Screen.Settings }
             )
             is Screen.Camera -> CameraScreen(
+                meterType = s.meterType,
                 onImageCaptured = { bitmap: Bitmap, rotationDegrees: Int ->
                     scope.launch {
                         val capturedAt = millisToIso(System.currentTimeMillis())
