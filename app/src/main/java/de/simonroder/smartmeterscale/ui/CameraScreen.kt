@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -42,6 +43,8 @@ fun CameraScreen(
     LaunchedEffect(Unit) {
         imageCapture = bindCamera(context, lifecycleOwner, previewView, executor)
     }
+
+    BackHandler { onBack() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())

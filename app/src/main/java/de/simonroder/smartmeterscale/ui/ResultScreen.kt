@@ -1,6 +1,7 @@
 package de.simonroder.smartmeterscale.ui
 
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -89,6 +90,11 @@ fun ResultScreen(
     }
 
     val hasRotate = onRotateFile != null && onRetryOcr != null
+
+    BackHandler {
+        pendingOcrJob?.cancel()
+        onBack()
+    }
 
     Scaffold(
         topBar = {

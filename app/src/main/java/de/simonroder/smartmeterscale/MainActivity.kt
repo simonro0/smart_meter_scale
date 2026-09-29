@@ -85,6 +85,35 @@ class MainActivity : ComponentActivity() {
         val scope = rememberCoroutineScope()
         val history = remember { TransmissionHistory(this) }
         var retransmitDialog by remember { mutableStateOf<RetransmitDialogInfo?>(null) }
+        var pendingGalleryUri by remember { mutableStateOf<Uri?>(null) }
+        var pendingGalleryAt by remember { mutableStateOf<String?>(null) }
+
+        suspend fun processGalleryFd(type: MeterType, pfd: android.os.ParcelFileDescriptor?, capturedAt: String) {
+            try {
+                screen = Screen.Processing(type, null)
+                if (pfd == null) {
+                    screen = Screen.Result(type, null, null, null,
+                        "Fehler: Galeriebild konnte nicht geöffnet werden (openFileDescriptor = null)")
+                    return
+                }
+                val pair = withContext(Dispatchers.IO) {
+                    pfd.use { copyFdToMedia(it.fileDescriptor) }
+                }
+                if (pair == null) {
+                    screen = Screen.Result(type, null, null, null,
+                        "Fehler: Galeriebild konnte nicht dekodiert werden")
+                    return
+                }
+                val (imagePath, bitmap) = pair
+                withContext(Dispatchers.IO) { copyToBackup(imagePath, type) }
+                val result = processImage(bitmap, imagePath, type, mlKitProcessor, parser)
+                screen = result.copy(capturedAt = capturedAt)
+            } catch (e: Exception) {
+                Log.e("SmartMeter", "Gallery flow exception: ${e.message}", e)
+                screen = Screen.Result(type, null, null, null,
+                    "Fehler: ${e.javaClass.simpleName}: ${e.message}")
+            }
+        }
 
         val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
             val type = pendingMeterType ?: return@rememberLauncherForActivityResult
@@ -93,37 +122,20 @@ class MainActivity : ComponentActivity() {
             // Both operations happen here on the main thread while the URI permission from
             // GetContent() is guaranteed active. On Android 13+ (photo picker), URIs may
             // become inaccessible from background threads after the callback returns.
-            val pfd = try { contentResolver.openFileDescriptor(uri, "r") } catch (e: Exception) {
-                Log.e("SmartMeter", "Gallery: openFileDescriptor threw for $uri: ${e.message}")
-                null
-            }
             val capturedAt = readGalleryTimestamp(uri) ?: millisToIso(System.currentTimeMillis())
+            val last = history.getLast(type)
 
-            scope.launch {
-                try {
-                    screen = Screen.Processing(type, null)
-                    if (pfd == null) {
-                        screen = Screen.Result(type, null, null, null,
-                            "Fehler: Galeriebild konnte nicht geöffnet werden (openFileDescriptor = null)")
-                        return@launch
-                    }
-                    val pair = withContext(Dispatchers.IO) {
-                        pfd.use { copyFdToMedia(it.fileDescriptor) }
-                    }
-                    if (pair == null) {
-                        screen = Screen.Result(type, null, null, null,
-                            "Fehler: Galeriebild konnte nicht dekodiert werden")
-                        return@launch
-                    }
-                    val (imagePath, bitmap) = pair
-                    withContext(Dispatchers.IO) { copyToBackup(imagePath, type) }
-                    val result = processImage(bitmap, imagePath, type, mlKitProcessor, parser)
-                    screen = result.copy(capturedAt = capturedAt)
-                } catch (e: Exception) {
-                    Log.e("SmartMeter", "Gallery flow exception: ${e.message}", e)
-                    screen = Screen.Result(type, null, null, null,
-                        "Fehler: ${e.javaClass.simpleName}: ${e.message}")
+            if (last != null && timestampsInSameHour(last.timestamp, capturedAt)) {
+                // Gallery image timestamp matches the last successful record → warn before re-analyzing
+                pendingGalleryUri = uri
+                pendingGalleryAt = capturedAt
+                retransmitDialog = RetransmitDialogInfo(last, type, isSameHour = true, openGallery = true)
+            } else {
+                val pfd = try { contentResolver.openFileDescriptor(uri, "r") } catch (e: Exception) {
+                    Log.e("SmartMeter", "Gallery: openFileDescriptor threw for $uri: ${e.message}")
+                    null
                 }
+                scope.launch { processGalleryFd(type, pfd, capturedAt) }
             }
         }
 
@@ -142,22 +154,12 @@ class MainActivity : ComponentActivity() {
 
         fun requestCameraOrHistory(type: MeterType) {
             val last = history.getLast(type)
-            if (last != null) {
+            if (last != null && history.isSameHour(last)) {
+                // Same hour: warn before capturing a potential duplicate
                 pendingMeterType = type
-                retransmitDialog = RetransmitDialogInfo(last, type, history.isSameHour(last))
+                retransmitDialog = RetransmitDialogInfo(last, type, isSameHour = true)
             } else {
                 openCameraForType(type)
-            }
-        }
-
-        fun requestGalleryOrHistory(type: MeterType) {
-            val last = history.getLast(type)
-            if (last != null) {
-                pendingMeterType = type
-                retransmitDialog = RetransmitDialogInfo(last, type, history.isSameHour(last), openGallery = true)
-            } else {
-                pendingMeterType = type
-                galleryLauncher.launch("image/*")
             }
         }
 
@@ -180,8 +182,15 @@ class MainActivity : ComponentActivity() {
                 onNewCapture = {
                     retransmitDialog = null
                     if (info.openGallery) {
-                        pendingMeterType = info.pendingMeterType
-                        galleryLauncher.launch("image/*")
+                        // Re-analyze the already-selected gallery image
+                        val uri = pendingGalleryUri
+                        val at = pendingGalleryAt ?: millisToIso(System.currentTimeMillis())
+                        pendingGalleryUri = null
+                        pendingGalleryAt = null
+                        if (uri != null) {
+                            val pfd2 = try { contentResolver.openFileDescriptor(uri, "r") } catch (e: Exception) { null }
+                            scope.launch { processGalleryFd(info.pendingMeterType, pfd2, at) }
+                        }
                     } else {
                         openCameraForType(info.pendingMeterType)
                     }
@@ -193,7 +202,10 @@ class MainActivity : ComponentActivity() {
         when (val s = screen) {
             is Screen.Home -> HomeScreen(
                 onOpenCamera = { type -> requestCameraOrHistory(type) },
-                onOpenGallery = { type -> requestGalleryOrHistory(type) },
+                onOpenGallery = { type ->
+                    pendingMeterType = type
+                    galleryLauncher.launch("image/*")
+                },
                 onOpenSettings = { screen = Screen.Settings }
             )
             is Screen.Camera -> CameraScreen(
@@ -423,6 +435,12 @@ class MainActivity : ComponentActivity() {
         null
     }
 
+    private fun timestampsInSameHour(ts1: String, ts2: String): Boolean = try {
+        val a = java.time.OffsetDateTime.parse(ts1)
+        val b = java.time.OffsetDateTime.parse(ts2)
+        a.year == b.year && a.dayOfYear == b.dayOfYear && a.hour == b.hour
+    } catch (e: Exception) { false }
+
     private fun millisToIso(millis: Long): String =
         Instant.ofEpochMilli(millis)
             .atZone(ZoneId.systemDefault())
@@ -488,30 +506,35 @@ private fun RetransmitDialog(
                 modifier = Modifier.padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text("Prior Transmission", style = MaterialTheme.typography.titleLarge)
+                Text(
+                    if (info.openGallery) "Already transmitted this image?" else "Already sent this hour",
+                    style = MaterialTheme.typography.titleLarge
+                )
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Last sent: ${info.record.displayValue}")
+                    Text(
+                        if (info.openGallery)
+                            "The selected image is from the same hour as your last successful transmission."
+                        else
+                            "A reading was already sent this hour.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text("Last: ${info.record.displayValue}", style = MaterialTheme.typography.bodyMedium)
                     Text(
                         "At: $displayTime",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
-                    if (info.isSameHour) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "⚠ Already transmitted this hour",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
                 ) {
                     TextButton(onClick = onDismiss) { Text("Cancel") }
-                    TextButton(onClick = onNewCapture) { Text("New Capture") }
-                    Button(onClick = onRetransmit) { Text("Retransmit") }
+                    TextButton(onClick = onNewCapture) {
+                        Text(if (info.openGallery) "Re-analyze" else "Capture anyway")
+                    }
+                    Button(onClick = onRetransmit) { Text("Use previous") }
                 }
             }
         }

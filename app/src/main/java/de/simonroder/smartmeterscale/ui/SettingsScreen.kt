@@ -3,6 +3,7 @@ package de.simonroder.smartmeterscale.ui
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -56,6 +57,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             saved = false
         }
     }
+
+    BackHandler { onBack() }
 
     Scaffold(
         topBar = {

@@ -121,12 +121,9 @@ private fun MeterTypeCard(
         MeterType.Electricity -> Icons.Default.ElectricBolt
         MeterType.Water -> Icons.Default.Water
     }
-    val containerColor = when (type) {
-        MeterType.Scale -> MaterialTheme.colorScheme.surfaceVariant
-        MeterType.Gas -> MaterialTheme.colorScheme.tertiaryContainer
-        MeterType.Electricity -> MaterialTheme.colorScheme.secondaryContainer
-        MeterType.Water -> MaterialTheme.colorScheme.primaryContainer
-    }
+    val containerColor = MaterialTheme.colorScheme.surfaceVariant
+    val contentColor = if (selected) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant
     val displayTime = remember(lastRecord?.timestamp) {
         lastRecord?.timestamp?.let { ts ->
             runCatching {
@@ -150,22 +147,15 @@ private fun MeterTypeCard(
                 .padding(14.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp), tint = contentColor)
             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(type.displayName, style = MaterialTheme.typography.labelLarge)
-                if (displayTime != null) {
-                    Text(
-                        displayTime,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                } else {
-                    Text(
-                        "No data yet",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outlineVariant
-                    )
-                }
+                Text(type.displayName, style = MaterialTheme.typography.labelLarge, color = contentColor)
+                Text(
+                    displayTime ?: "No data yet",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                            else MaterialTheme.colorScheme.outline
+                )
             }
         }
     }
