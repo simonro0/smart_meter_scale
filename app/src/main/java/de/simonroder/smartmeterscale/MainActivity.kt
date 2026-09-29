@@ -1,6 +1,7 @@
 package de.simonroder.smartmeterscale
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -13,17 +14,19 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import de.simonroder.smartmeterscale.data.MeterType
+import de.simonroder.smartmeterscale.data.ScaleReading
+import de.simonroder.smartmeterscale.data.TransmissionRecord
 import de.simonroder.smartmeterscale.ha.HaPreferences
+import de.simonroder.smartmeterscale.ha.TransmissionHistory
 import de.simonroder.smartmeterscale.ocr.GeminiOcrClient
 import de.simonroder.smartmeterscale.ocr.GeminiRateLimitException
 import de.simonroder.smartmeterscale.ocr.OcrProcessor
@@ -44,7 +47,15 @@ import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 
+private data class RetransmitDialogInfo(
+    val record: TransmissionRecord,
+    val pendingMeterType: MeterType,
+    val isSameHour: Boolean
+)
+
 class MainActivity : ComponentActivity() {
+
+    private val shortcutTypeState = mutableStateOf<MeterType?>(null)
 
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -52,16 +63,25 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { SmartMeterScaleTheme { AppContent() } }
+        shortcutTypeState.value = intent.getShortcutMeterType()
+        setContent { SmartMeterScaleTheme { AppContent(shortcutTypeState) } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        shortcutTypeState.value = intent.getShortcutMeterType()
     }
 
     @Composable
-    private fun AppContent() {
+    private fun AppContent(shortcutTypeState: MutableState<MeterType?>) {
         var screen by remember { mutableStateOf<Screen>(Screen.Home) }
         var pendingMeterType by remember { mutableStateOf<MeterType?>(null) }
         val mlKitProcessor = remember { OcrProcessor() }
         val parser = remember { OcrValueParser() }
         val scope = rememberCoroutineScope()
+        val history = remember { TransmissionHistory(this) }
+        var retransmitDialog by remember { mutableStateOf<RetransmitDialogInfo?>(null) }
 
         val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
             val type = pendingMeterType ?: return@rememberLauncherForActivityResult
@@ -108,16 +128,52 @@ class MainActivity : ComponentActivity() {
             if (granted) pendingMeterType?.let { screen = Screen.Camera(it) }
         }
 
+        fun openCameraForType(type: MeterType) {
+            pendingMeterType = type
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                screen = Screen.Camera(type)
+            } else {
+                cameraPermLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }
+
+        fun requestCameraOrHistory(type: MeterType) {
+            val last = history.getLast(type)
+            if (last != null) {
+                pendingMeterType = type
+                retransmitDialog = RetransmitDialogInfo(last, type, history.isSameHour(last))
+            } else {
+                openCameraForType(type)
+            }
+        }
+
+        LaunchedEffect(shortcutTypeState.value) {
+            val type = shortcutTypeState.value ?: return@LaunchedEffect
+            shortcutTypeState.value = null
+            requestCameraOrHistory(type)
+        }
+
+        retransmitDialog?.let { info ->
+            RetransmitDialog(
+                info = info,
+                onRetransmit = {
+                    retransmitDialog = null
+                    val r = info.record
+                    val scaleReading = if (r.meterType == MeterType.Scale && r.scaleWeight != null)
+                        ScaleReading(r.scaleWeight, r.scaleBodyFat, r.scaleBodyWater) else null
+                    screen = Screen.Result(r.meterType, scaleReading, r.meterValue, null, capturedAt = r.timestamp)
+                },
+                onNewCapture = {
+                    retransmitDialog = null
+                    openCameraForType(info.pendingMeterType)
+                },
+                onDismiss = { retransmitDialog = null }
+            )
+        }
+
         when (val s = screen) {
             is Screen.Home -> HomeScreen(
-                onOpenCamera = { type ->
-                    pendingMeterType = type
-                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                        screen = Screen.Camera(type)
-                    } else {
-                        cameraPermLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                },
+                onOpenCamera = { type -> requestCameraOrHistory(type) },
                 onOpenGallery = { type ->
                     pendingMeterType = type
                     galleryLauncher.launch("image/*")
@@ -180,6 +236,7 @@ class MainActivity : ComponentActivity() {
                         screen = result.copy(capturedAt = s.capturedAt)
                     }
                 },
+                onSendSuccess = { record -> history.save(record) },
                 onBack = { screen = Screen.Home }
             )
             is Screen.Settings -> SettingsScreen(onBack = { screen = Screen.Home })
@@ -379,6 +436,63 @@ class MainActivity : ComponentActivity() {
             Log.d("SmartMeter", "Backup saved: $fileName")
         } catch (e: Exception) {
             Log.e("SmartMeter", "Backup failed: ${e.message}", e)
+        }
+    }
+}
+
+private fun Intent.getShortcutMeterType(): MeterType? {
+    val name = getStringExtra("SHORTCUT_METER_TYPE") ?: return null
+    return MeterType.entries.find { it.name == name }
+}
+
+@Composable
+private fun RetransmitDialog(
+    info: RetransmitDialogInfo,
+    onRetransmit: () -> Unit,
+    onNewCapture: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val displayTime = remember(info.record.timestamp) {
+        runCatching {
+            val odt = java.time.OffsetDateTime.parse(info.record.timestamp)
+            java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm").format(odt)
+        }.getOrDefault(info.record.timestamp)
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("Prior Transmission", style = MaterialTheme.typography.titleLarge)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Last sent: ${info.record.displayValue}")
+                    Text(
+                        "At: $displayTime",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    if (info.isSameHour) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "⚠ Already transmitted this hour",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+                ) {
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    TextButton(onClick = onNewCapture) { Text("New Capture") }
+                    Button(onClick = onRetransmit) { Text("Retransmit") }
+                }
+            }
         }
     }
 }

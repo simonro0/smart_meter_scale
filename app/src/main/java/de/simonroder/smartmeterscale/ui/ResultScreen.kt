@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import de.simonroder.smartmeterscale.data.MeterType
 import de.simonroder.smartmeterscale.data.ScaleReading
+import de.simonroder.smartmeterscale.data.TransmissionRecord
 import de.simonroder.smartmeterscale.data.User
 import de.simonroder.smartmeterscale.ha.HaPreferences
 import de.simonroder.smartmeterscale.ha.HomeAssistantClient
@@ -42,6 +43,7 @@ fun ResultScreen(
     capturedAt: String? = null,
     onRotateFile: (suspend (degrees: Int) -> Unit)? = null,
     onRetryOcr: (() -> Unit)? = null,
+    onSendSuccess: ((TransmissionRecord) -> Unit)? = null,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -216,6 +218,22 @@ fun ResultScreen(
                                         }
                                     }
                                     sendStatus = "Erfolgreich gesendet"
+                                    val displayValue = if (meterType == MeterType.Scale && scaleReading != null)
+                                        "${scaleReading.weightKg} kg" else "$meterValue ${meterType.unit}"
+                                    val ts = capturedAt ?: java.time.OffsetDateTime.now()
+                                        .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                                    onSendSuccess?.invoke(
+                                        TransmissionRecord(
+                                            meterType = meterType,
+                                            timestamp = ts,
+                                            displayValue = displayValue,
+                                            scaleWeight = scaleReading?.weightKg,
+                                            scaleBodyFat = scaleReading?.bodyFatPercent,
+                                            scaleBodyWater = scaleReading?.bodyWaterPercent,
+                                            userId = selectedUser?.id,
+                                            meterValue = meterValue
+                                        )
+                                    )
                                 } catch (e: Exception) {
                                     sendStatus = "Fehler: ${e.message}"
                                 }

@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SmartMeterScale</string>
+    <string name="shortcut_scale_short">Scale</string>
+    <string name="shortcut_scale_long">Capture Scale</string>
+    <string name="shortcut_gas_short">Gas</string>
+    <string name="shortcut_gas_long">Capture Gas Meter</string>
+    <string name="shortcut_electricity_short">Electricity</string>
+    <string name="shortcut_electricity_long">Capture Electricity Meter</string>
+    <string name="shortcut_water_short">Water</string>
+    <string name="shortcut_water_long">Capture Water Meter</string>
 </resources>

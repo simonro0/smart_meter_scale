@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="shortcut_scale"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_scale_short"
+        android:shortcutLongLabel="@string/shortcut_scale_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="de.simonroder.smartmeterscale"
+            android:targetClass="de.simonroder.smartmeterscale.MainActivity">
+            <extra android:name="SHORTCUT_METER_TYPE" android:value="Scale" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_gas"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_gas_short"
+        android:shortcutLongLabel="@string/shortcut_gas_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="de.simonroder.smartmeterscale"
+            android:targetClass="de.simonroder.smartmeterscale.MainActivity">
+            <extra android:name="SHORTCUT_METER_TYPE" android:value="Gas" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_electricity"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_electricity_short"
+        android:shortcutLongLabel="@string/shortcut_electricity_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="de.simonroder.smartmeterscale"
+            android:targetClass="de.simonroder.smartmeterscale.MainActivity">
+            <extra android:name="SHORTCUT_METER_TYPE" android:value="Electricity" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="shortcut_water"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_water_short"
+        android:shortcutLongLabel="@string/shortcut_water_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="de.simonroder.smartmeterscale"
+            android:targetClass="de.simonroder.smartmeterscale.MainActivity">
+            <extra android:name="SHORTCUT_METER_TYPE" android:value="Water" />
+        </intent>
+    </shortcut>
+
+</shortcuts>
