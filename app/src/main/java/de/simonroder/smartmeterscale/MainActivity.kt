@@ -185,7 +185,7 @@ class MainActivity : ComponentActivity() {
                     scope.launch {
                         val capturedAt = millisToIso(System.currentTimeMillis())
                         val rotated = rotateBitmap(bitmap, rotationDegrees)
-                        val imagePath = withContext(Dispatchers.IO) { saveBitmapToMedia(rotated) }
+                        val imagePath = withContext(Dispatchers.IO) { saveBitmapToMedia(rotated, s.meterType) }
                         screen = Screen.Processing(s.meterType, imagePath)
                         withContext(Dispatchers.IO) { copyToBackup(imagePath, s.meterType) }
                         val result = processImage(rotated, imagePath, s.meterType, mlKitProcessor, parser)
@@ -320,8 +320,9 @@ class MainActivity : ComponentActivity() {
     private fun capturesDir(): File =
         File(getExternalMediaDirs().firstOrNull(), "captures").also { it.mkdirs() }
 
-    private fun saveBitmapToMedia(bitmap: Bitmap): String {
-        val file = File(capturesDir(), "last_capture.jpg")
+    private fun saveBitmapToMedia(bitmap: Bitmap, meterType: MeterType): String {
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val file = File(capturesDir(), "${timestamp}_${meterType.entityBase}.jpg")
         FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
         Log.d("SmartMeter", "Image saved: ${file.absolutePath}")
         return file.absolutePath
@@ -372,7 +373,8 @@ class MainActivity : ComponentActivity() {
         }
         Log.d("SmartMeter", "Gallery decoded: ${bitmap.width}×${bitmap.height} (sampleSize=$sampleSize)")
 
-        val file = File(capturesDir(), "last_capture.jpg")
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val file = File(capturesDir(), "${timestamp}_gallery.jpg")
         try {
             FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
         } catch (e: Exception) {

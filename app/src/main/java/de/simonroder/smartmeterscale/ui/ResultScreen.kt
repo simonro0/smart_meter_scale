@@ -55,7 +55,9 @@ fun ResultScreen(
     var selectedUser by remember { mutableStateOf<User?>(users.firstOrNull()) }
     var userMenuExpanded by remember { mutableStateOf(false) }
     var sendStatus by remember { mutableStateOf("") }
-    val isError = remember(rawOcrText) { rawOcrText?.startsWith("Fehler") == true }
+    val isError = remember(rawOcrText) {
+        rawOcrText?.startsWith("Fehler") == true || rawOcrText?.startsWith("Gemini-Fehler") == true
+    }
     var debugExpanded by remember(isError) { mutableStateOf(isError) }
 
     // Preview bitmap — reloaded from file after each rotation
@@ -166,7 +168,49 @@ fun ResultScreen(
             } else if (meterValue != null) {
                 ReadingCard(meterType.displayName, "$meterValue ${meterType.unit}")
             } else {
-                if (isError && rawOcrText != null) {
+                val isGeminiError = rawOcrText?.startsWith("Gemini-Fehler") == true
+                if (isGeminiError) {
+                    val friendlyMsg = remember(rawOcrText) {
+                        runCatching {
+                            val jsonStart = rawOcrText.indexOf('{')
+                            if (jsonStart >= 0) {
+                                org.json.JSONObject(rawOcrText.substring(jsonStart))
+                                    .optJSONObject("error")?.optString("message")
+                                    ?: rawOcrText.removePrefix("Gemini-Fehler: ")
+                            } else rawOcrText.removePrefix("Gemini-Fehler: ")
+                        }.getOrDefault(rawOcrText.removePrefix("Gemini-Fehler: "))
+                    }
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                "Gemini unavailable",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                friendlyMsg,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            if (onRetryOcr != null) {
+                                TextButton(
+                                    onClick = onRetryOcr,
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                ) { Text("Retry") }
+                            }
+                        }
+                    }
+                } else if (isError && rawOcrText != null) {
                     Text(
                         rawOcrText,
                         style = MaterialTheme.typography.bodyMedium,
@@ -178,6 +222,14 @@ fun ResultScreen(
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
+            }
+
+            if (imagePath != null) {
+                Text(
+                    "Saved: ${java.io.File(imagePath).name}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
             }
 
             if (capturedAt != null) {
