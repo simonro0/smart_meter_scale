@@ -58,6 +58,12 @@ class HaPreferences(context: Context) {
                 ?: MeterType.entries.map { it.name }.toSet()
         set(v) = prefs.edit().putStringSet("enabled_meter_types", v).apply()
 
+    fun backupUriForType(type: MeterType): String =
+        prefs.getString("backup_uri_type_${type.name}", "") ?: ""
+
+    fun setBackupUriForType(type: MeterType, uri: String) =
+        prefs.edit().putString("backup_uri_type_${type.name}", uri).apply()
+
     fun isConfigured() = baseUrl.isNotBlank() && token.isNotBlank()
 
     fun isMqttConfigured() = mqttHost.isNotBlank()

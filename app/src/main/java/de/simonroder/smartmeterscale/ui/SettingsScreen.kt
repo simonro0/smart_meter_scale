@@ -39,7 +39,6 @@ fun SettingsScreen(
     var themeMode by themeModeState
     var baseUrl by remember { mutableStateOf(haPrefs.baseUrl) }
     var token by remember { mutableStateOf(haPrefs.token) }
-    var backupPath by remember { mutableStateOf(haPrefs.backupPath) }
     var geminiApiKey by remember { mutableStateOf(haPrefs.geminiApiKey) }
     var geminiModel by remember { mutableStateOf(haPrefs.geminiModel) }
     var mqttHost by remember { mutableStateOf(haPrefs.mqttHost) }
@@ -48,21 +47,24 @@ fun SettingsScreen(
     var mqttPassword by remember { mutableStateOf(haPrefs.mqttPassword) }
     var saved by remember { mutableStateOf(false) }
     var enabledMeterTypes by remember { mutableStateOf(haPrefs.enabledMeterTypes) }
+    var typeBackupUris by remember {
+        mutableStateOf(MeterType.entries.associate { it.name to haPrefs.backupUriForType(it) })
+    }
+    var pendingPickerType by remember { mutableStateOf<MeterType?>(null) }
     var users by remember { mutableStateOf(userPrefs.getUsers()) }
     var newUserName by remember { mutableStateOf("") }
 
-    val folderPickerLauncher = rememberLauncherForActivityResult(
+    val typeBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
-        uri?.let {
-            context.contentResolver.takePersistableUriPermission(
-                it,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-            haPrefs.backupUri = it.toString()
-            backupPath = it.toFilePath() ?: it.toString()
-            saved = false
-        }
+        uri ?: return@rememberLauncherForActivityResult
+        val type = pendingPickerType ?: return@rememberLauncherForActivityResult
+        context.contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        haPrefs.setBackupUriForType(type, uri.toString())
+        typeBackupUris = typeBackupUris + (type.name to uri.toString())
     }
 
     BackHandler { onBack() }
@@ -104,25 +106,56 @@ fun SettingsScreen(
 
             SettingsSection("Active Meters") {
                 Text(
-                    "Disable meter types you don't use to keep the home screen uncluttered.",
+                    "Disable unused meters to keep the home screen clean. Set a backup folder per meter for Syncthing sync.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline
                 )
                 MeterType.entries.forEach { type ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(type.displayName, style = MaterialTheme.typography.bodyLarge)
-                        Switch(
-                            checked = type.name in enabledMeterTypes,
-                            onCheckedChange = { enabled ->
-                                enabledMeterTypes = if (enabled) enabledMeterTypes + type.name
-                                                  else (enabledMeterTypes - type.name)
-                                    .ifEmpty { enabledMeterTypes } // keep at least one
-                                saved = false
+                    val isEnabled = type.name in enabledMeterTypes
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(type.displayName, style = MaterialTheme.typography.bodyLarge)
+                            Switch(
+                                checked = isEnabled,
+                                onCheckedChange = { on ->
+                                    enabledMeterTypes = if (on) enabledMeterTypes + type.name
+                                                      else (enabledMeterTypes - type.name)
+                                                          .ifEmpty { enabledMeterTypes }
+                                    saved = false
+                                }
+                            )
+                        }
+                        if (isEnabled) {
+                            val uriStr = typeBackupUris[type.name] ?: ""
+                            val displayPath = if (uriStr.isNotBlank())
+                                Uri.parse(uriStr).toFilePath() ?: "Custom folder" else ""
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    if (displayPath.isNotBlank()) displayPath else "No backup folder",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = {
+                                    pendingPickerType = type
+                                    typeBackupLauncher.launch(null)
+                                }) {
+                                    Icon(Icons.Default.Folder, contentDescription = "Pick folder")
+                                }
                             }
+                        }
+                    }
+                    if (type != MeterType.entries.last()) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            modifier = Modifier.padding(vertical = 4.dp)
                         )
                     }
                 }
@@ -213,26 +246,9 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsSection("Backup / Syncthing") {
-                OutlinedTextField(
-                    value = backupPath,
-                    onValueChange = { backupPath = it; saved = false },
-                    label = { Text("Backup folder (optional)") },
-                    placeholder = { Text("/storage/emulated/0/SmartMeter") },
-                    supportingText = { Text("Captures are also saved here for Syncthing sync.") },
-                    modifier = Modifier.fillMaxWidth(),
-                    trailingIcon = {
-                        IconButton(onClick = { folderPickerLauncher.launch(null) }) {
-                            Icon(Icons.Default.Folder, contentDescription = "Pick folder")
-                        }
-                    },
-                    singleLine = true
-                )
-            }
-
             SettingsSection("Scale Users") {
                 Text(
-                    "Entity IDs: sensor.scale_weight_<name>, sensor.gas_meter, sensor.electricity_meter, sensor.water_meter",
+                    "Entity IDs: sensor.scale_weight_<name>, sensor.gas_meter, sensor.electricity_meter, sensor.water_meter, sensor.odometer",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline
                 )
@@ -283,7 +299,6 @@ fun SettingsScreen(
                     haPrefs.enabledMeterTypes = enabledMeterTypes
                     haPrefs.baseUrl = baseUrl.trimEnd('/')
                     haPrefs.token = token.trim()
-                    haPrefs.backupPath = backupPath.trim()
                     haPrefs.geminiApiKey = geminiApiKey.trim()
                     haPrefs.geminiModel = geminiModel.trim().ifBlank { "gemini-3.6-flash" }
                     haPrefs.mqttHost = mqttHost.trim()

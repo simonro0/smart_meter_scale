@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -137,8 +138,11 @@ class MainActivity : ComponentActivity() {
             // become inaccessible from background threads after the callback returns.
             val capturedAt = readGalleryTimestamp(uri) ?: millisToIso(System.currentTimeMillis())
             val originalName = try {
-                contentResolver.query(uri, arrayOf(MediaStore.Images.Media.DISPLAY_NAME), null, null, null)?.use { c ->
+                contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
                     if (c.moveToFirst()) c.getString(0) else null
+                }?.takeIf { name ->
+                    // Photo picker on Android 13+ may return bare numeric ID (e.g. "97958.jpg") — ignore those
+                    name.substringBeforeLast('.').any { !it.isDigit() }
                 }
             } catch (e: Exception) { null }
             val last = history.getLast(type)
@@ -373,7 +377,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun capturesDir(meterType: MeterType): File =
-        File(getExternalMediaDirs().firstOrNull(), "captures/${meterType.entityBase}").also { it.mkdirs() }
+        File(cacheDir, meterType.entityBase).also { it.mkdirs() }
 
     private fun saveBitmapToMedia(bitmap: Bitmap, meterType: MeterType): String {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
@@ -527,28 +531,23 @@ class MainActivity : ComponentActivity() {
     // Backup via SAF (DocumentFile) so it works on Android 10+ without MANAGE_EXTERNAL_STORAGE.
     // Timestamp is always in the filename. Called regardless of OCR result.
     private fun copyToBackup(sourcePath: String, meterType: MeterType) {
-        val uriString = HaPreferences(this).backupUri
+        val uriString = HaPreferences(this).backupUriForType(meterType)
         if (uriString.isBlank()) return
         try {
             val treeUri = Uri.parse(uriString)
-            val rootDir = DocumentFile.fromTreeUri(this, treeUri) ?: run {
-                Log.w("SmartMeter", "Backup: could not open tree URI")
+            val dir = DocumentFile.fromTreeUri(this, treeUri) ?: run {
+                Log.w("SmartMeter", "Backup: could not open tree URI for ${meterType.name}")
                 return
             }
-            val subDir = rootDir.findFile(meterType.entityBase)?.takeIf { it.isDirectory }
-                ?: rootDir.createDirectory(meterType.entityBase) ?: run {
-                    Log.w("SmartMeter", "Backup: could not create subfolder ${meterType.entityBase}")
-                    return
-                }
             val fileName = File(sourcePath).name
-            val newFile = subDir.createFile("image/jpeg", fileName) ?: run {
+            val newFile = dir.createFile("image/jpeg", fileName) ?: run {
                 Log.w("SmartMeter", "Backup: could not create file $fileName")
                 return
             }
             contentResolver.openOutputStream(newFile.uri)?.use { out ->
                 File(sourcePath).inputStream().use { it.copyTo(out) }
             }
-            Log.d("SmartMeter", "Backup saved: ${meterType.entityBase}/$fileName")
+            Log.d("SmartMeter", "Backup saved: ${meterType.name}/$fileName")
         } catch (e: Exception) {
             Log.e("SmartMeter", "Backup failed: ${e.message}", e)
         }
