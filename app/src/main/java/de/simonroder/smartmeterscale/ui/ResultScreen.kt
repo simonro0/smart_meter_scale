@@ -25,6 +25,7 @@ import de.simonroder.smartmeterscale.data.TransmissionRecord
 import de.simonroder.smartmeterscale.data.User
 import de.simonroder.smartmeterscale.ha.HaPreferences
 import de.simonroder.smartmeterscale.ha.HomeAssistantClient
+import de.simonroder.smartmeterscale.ha.TransmissionHistory
 import de.simonroder.smartmeterscale.ha.UserPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,8 +50,20 @@ fun ResultScreen(
     val context = LocalContext.current
     val haPrefs = remember { HaPreferences(context) }
     val userPrefs = remember { UserPreferences(context) }
+    val history = remember { TransmissionHistory(context) }
     val users = remember { userPrefs.getUsers() }
     val scope = rememberCoroutineScope()
+
+    // A reading is historical when its timestamp is older than the last successful send
+    // for this meter. In that case we only write import_statistics and skip the MQTT/REST
+    // current-state update so the meter value doesn't appear to drop in HA.
+    val isHistorical = remember(capturedAt, meterType) {
+        if (capturedAt == null) return@remember false
+        val lastTs = history.getLast(meterType)?.timestamp ?: return@remember false
+        try {
+            java.time.OffsetDateTime.parse(capturedAt) < java.time.OffsetDateTime.parse(lastTs)
+        } catch (_: Exception) { false }
+    }
 
     var selectedUser by remember { mutableStateOf<User?>(users.firstOrNull()) }
     var userMenuExpanded by remember { mutableStateOf(false) }
@@ -252,6 +265,13 @@ fun ResultScreen(
                     (meterType != MeterType.Scale && meterValue != null)
 
             if (hasReading) {
+                if (isHistorical) {
+                    Text(
+                        "Historischer Wert (älter als letzte Übertragung) – nur Langzeitstatistik wird aktualisiert, aktueller Sensorstand bleibt unverändert.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
                 if (haPrefs.isConfigured()) {
                     Button(
                         onClick = {
@@ -264,9 +284,9 @@ fun ResultScreen(
                                     )
                                     withContext(Dispatchers.IO) {
                                         if (meterType == MeterType.Scale && scaleReading != null) {
-                                            client.sendScaleReading(scaleReading, selectedUser, capturedAt)
+                                            client.sendScaleReading(scaleReading, selectedUser, capturedAt, updateCurrentState = !isHistorical)
                                         } else if (meterValue != null) {
-                                            client.sendMeterReading(meterValue, meterType, capturedAt)
+                                            client.sendMeterReading(meterValue, meterType, capturedAt, updateCurrentState = !isHistorical)
                                         }
                                     }
                                     sendStatus = "Erfolgreich gesendet"

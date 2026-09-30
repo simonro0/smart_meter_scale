@@ -21,20 +21,24 @@ class HomeAssistantClient(
 
     private val jsonMediaType = "application/json".toMediaType()
 
-    fun sendScaleReading(reading: ScaleReading, user: User? = null, capturedAt: String? = null) {
+    // updateCurrentState = false when the reading is older than the last known value —
+    // in that case only import_statistics is called so the current MQTT/HA state
+    // is not overwritten with a historical (lower) meter value.
+    fun sendScaleReading(reading: ScaleReading, user: User? = null, capturedAt: String? = null, updateCurrentState: Boolean = true) {
         val suffix = user?.entitySuffix() ?: ""
-        if (mqttConfig != null) {
-            MqttDiscoveryClient(mqttConfig).publishScaleReading(reading, user)
-        } else {
-            postState("sensor.scale_weight$suffix", reading.weightKg.toString(), "kg", null, "measurement", capturedAt)
-            reading.bodyFatPercent?.let {
-                postState("sensor.scale_body_fat$suffix", it.toString(), "%", null, "measurement", capturedAt)
-            }
-            reading.bodyWaterPercent?.let {
-                postState("sensor.scale_body_water$suffix", it.toString(), "%", null, "measurement", capturedAt)
+        if (updateCurrentState) {
+            if (mqttConfig != null) {
+                MqttDiscoveryClient(mqttConfig).publishScaleReading(reading, user)
+            } else {
+                postState("sensor.scale_weight$suffix", reading.weightKg.toString(), "kg", null, "measurement", capturedAt)
+                reading.bodyFatPercent?.let {
+                    postState("sensor.scale_body_fat$suffix", it.toString(), "%", null, "measurement", capturedAt)
+                }
+                reading.bodyWaterPercent?.let {
+                    postState("sensor.scale_body_water$suffix", it.toString(), "%", null, "measurement", capturedAt)
+                }
             }
         }
-
         if (capturedAt != null) {
             tryImportStatistic("sensor.scale_weight$suffix", "kg", reading.weightKg, capturedAt, "measurement")
             reading.bodyFatPercent?.let {
@@ -46,18 +50,20 @@ class HomeAssistantClient(
         }
     }
 
-    fun sendMeterReading(value: Double, meterType: MeterType, capturedAt: String? = null) {
-        if (mqttConfig != null) {
-            MqttDiscoveryClient(mqttConfig).publishMeter(meterType, value)
-        } else {
-            postState(
-                "sensor.${meterType.entityBase}",
-                value.toString(),
-                meterType.unit,
-                meterType.deviceClass,
-                meterType.stateClass,
-                capturedAt
-            )
+    fun sendMeterReading(value: Double, meterType: MeterType, capturedAt: String? = null, updateCurrentState: Boolean = true) {
+        if (updateCurrentState) {
+            if (mqttConfig != null) {
+                MqttDiscoveryClient(mqttConfig).publishMeter(meterType, value)
+            } else {
+                postState(
+                    "sensor.${meterType.entityBase}",
+                    value.toString(),
+                    meterType.unit,
+                    meterType.deviceClass,
+                    meterType.stateClass,
+                    capturedAt
+                )
+            }
         }
         if (capturedAt != null) {
             tryImportStatistic("sensor.${meterType.entityBase}", meterType.unit, value, capturedAt, meterType.stateClass)
