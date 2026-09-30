@@ -137,14 +137,7 @@ class MainActivity : ComponentActivity() {
             // GetContent() is guaranteed active. On Android 13+ (photo picker), URIs may
             // become inaccessible from background threads after the callback returns.
             val capturedAt = readGalleryTimestamp(uri) ?: millisToIso(System.currentTimeMillis())
-            val originalName = try {
-                contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-                    if (c.moveToFirst()) c.getString(0) else null
-                }?.takeIf { name ->
-                    // Photo picker on Android 13+ may return bare numeric ID (e.g. "97958.jpg") — ignore those
-                    name.substringBeforeLast('.').any { !it.isDigit() }
-                }
-            } catch (e: Exception) { null }
+            val originalName = resolveDisplayName(uri)
             val last = history.getLast(type)
 
             if (last != null && timestampsInSameHour(last.timestamp, capturedAt)) {
@@ -440,7 +433,9 @@ class MainActivity : ComponentActivity() {
                        }
         val file = File(capturesDir(meterType), filename)
         try {
-            FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+            // Write raw bytes — preserves original EXIF (DateTimeOriginal, GPS, etc.)
+            // so re-selecting this file from the backup folder gives the correct capture timestamp.
+            FileOutputStream(file).use { it.write(imageBytes) }
         } catch (e: Exception) {
             Log.e("SmartMeter", "copyFdToMedia: write failed at ${file.absolutePath}: ${e.message}")
             return null
@@ -453,6 +448,40 @@ class MainActivity : ComponentActivity() {
         var s = 1
         while (maxOf(width, height) / s > maxDimension) s *= 2
         return s
+    }
+
+    // Returns the display name for a content URI.
+    // Android 13+ photo picker URIs report a bare numeric ID via OpenableColumns
+    // (e.g. "97955.jpg"). We reject those and fall back to a direct MediaStore
+    // query by the numeric ID — which returns the actual filename if READ_MEDIA_IMAGES
+    // is granted; silently returns null otherwise.
+    private fun resolveDisplayName(uri: Uri): String? {
+        try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    val name = c.getString(0)
+                    if (!name.isNullOrBlank() && name.substringBeforeLast('.').any { !it.isDigit() }) {
+                        return name
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        // Photo picker path ends with the numeric media ID — try MediaStore
+        try {
+            val id = uri.lastPathSegment?.toLongOrNull() ?: return null
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Images.Media.DISPLAY_NAME),
+                "${MediaStore.Images.Media._ID} = ?",
+                arrayOf(id.toString()),
+                null
+            )?.use { c ->
+                if (c.moveToFirst()) return c.getString(0).takeIf { it.isNotBlank() }
+            }
+        } catch (_: Exception) {}
+
+        return null
     }
 
     private fun readGalleryTimestamp(uri: Uri): String? {
