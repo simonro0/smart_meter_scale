@@ -99,8 +99,9 @@ class MainActivity : ComponentActivity() {
         var retransmitDialog by remember { mutableStateOf<RetransmitDialogInfo?>(null) }
         var pendingGalleryUri by remember { mutableStateOf<Uri?>(null) }
         var pendingGalleryAt by remember { mutableStateOf<String?>(null) }
+        var pendingGalleryName by remember { mutableStateOf<String?>(null) }
 
-        suspend fun processGalleryFd(type: MeterType, pfd: android.os.ParcelFileDescriptor?, capturedAt: String) {
+        suspend fun processGalleryFd(type: MeterType, pfd: android.os.ParcelFileDescriptor?, capturedAt: String, originalName: String? = null) {
             try {
                 screen = Screen.Processing(type, null)
                 if (pfd == null) {
@@ -109,7 +110,7 @@ class MainActivity : ComponentActivity() {
                     return
                 }
                 val pair = withContext(Dispatchers.IO) {
-                    pfd.use { copyFdToMedia(it.fileDescriptor, capturedAt) }
+                    pfd.use { copyFdToMedia(it.fileDescriptor, type, capturedAt, originalName) }
                 }
                 if (pair == null) {
                     screen = Screen.Result(type, null, null, null,
@@ -135,19 +136,25 @@ class MainActivity : ComponentActivity() {
             // GetContent() is guaranteed active. On Android 13+ (photo picker), URIs may
             // become inaccessible from background threads after the callback returns.
             val capturedAt = readGalleryTimestamp(uri) ?: millisToIso(System.currentTimeMillis())
+            val originalName = try {
+                contentResolver.query(uri, arrayOf(MediaStore.Images.Media.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) c.getString(0) else null
+                }
+            } catch (e: Exception) { null }
             val last = history.getLast(type)
 
             if (last != null && timestampsInSameHour(last.timestamp, capturedAt)) {
                 // Gallery image timestamp matches the last successful record → warn before re-analyzing
                 pendingGalleryUri = uri
                 pendingGalleryAt = capturedAt
+                pendingGalleryName = originalName
                 retransmitDialog = RetransmitDialogInfo(last, type, isSameHour = true, openGallery = true)
             } else {
                 val pfd = try { contentResolver.openFileDescriptor(uri, "r") } catch (e: Exception) {
                     Log.e("SmartMeter", "Gallery: openFileDescriptor threw for $uri: ${e.message}")
                     null
                 }
-                scope.launch { processGalleryFd(type, pfd, capturedAt) }
+                scope.launch { processGalleryFd(type, pfd, capturedAt, originalName) }
             }
         }
 
@@ -197,11 +204,13 @@ class MainActivity : ComponentActivity() {
                         // Re-analyze the already-selected gallery image
                         val uri = pendingGalleryUri
                         val at = pendingGalleryAt ?: millisToIso(System.currentTimeMillis())
+                        val origName = pendingGalleryName
                         pendingGalleryUri = null
                         pendingGalleryAt = null
+                        pendingGalleryName = null
                         if (uri != null) {
                             val pfd2 = try { contentResolver.openFileDescriptor(uri, "r") } catch (e: Exception) { null }
-                            scope.launch { processGalleryFd(info.pendingMeterType, pfd2, at) }
+                            scope.launch { processGalleryFd(info.pendingMeterType, pfd2, at, origName) }
                         }
                     } else {
                         openCameraForType(info.pendingMeterType)
@@ -363,12 +372,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun capturesDir(): File =
-        File(getExternalMediaDirs().firstOrNull(), "captures").also { it.mkdirs() }
+    private fun capturesDir(meterType: MeterType): File =
+        File(getExternalMediaDirs().firstOrNull(), "captures/${meterType.entityBase}").also { it.mkdirs() }
 
     private fun saveBitmapToMedia(bitmap: Bitmap, meterType: MeterType): String {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val file = File(capturesDir(), "${timestamp}_${meterType.entityBase}.jpg")
+        val file = File(capturesDir(meterType), "${timestamp}_${meterType.entityBase}.jpg")
         FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
         Log.d("SmartMeter", "Image saved: ${file.absolutePath}")
         return file.absolutePath
@@ -381,7 +390,7 @@ class MainActivity : ComponentActivity() {
     // inSampleSize) without needing to seek or re-open the stream.
     // Note: FileInputStream(fd) does NOT close the FD when the stream is closed/GCed,
     // since the FD is owned externally by the ParcelFileDescriptor.
-    private fun copyFdToMedia(fd: FileDescriptor, capturedAt: String? = null): Pair<String, Bitmap>? {
+    private fun copyFdToMedia(fd: FileDescriptor, meterType: MeterType, capturedAt: String? = null, originalName: String? = null): Pair<String, Bitmap>? {
         val imageBytes = try {
             FileInputStream(fd).readBytes()
         } catch (e: Exception) {
@@ -419,9 +428,13 @@ class MainActivity : ComponentActivity() {
         }
         Log.d("SmartMeter", "Gallery decoded: ${bitmap.width}×${bitmap.height} (sampleSize=$sampleSize)")
 
-        val timestamp = capturedAt?.let { isoToFileTimestamp(it) }
-            ?: SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val file = File(capturesDir(), "${timestamp}_gallery.jpg")
+        val filename = if (!originalName.isNullOrBlank()) originalName
+                       else {
+                           val ts = capturedAt?.let { isoToFileTimestamp(it) }
+                               ?: SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                           "${ts}_gallery.jpg"
+                       }
+        val file = File(capturesDir(meterType), filename)
         try {
             FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
         } catch (e: Exception) {
@@ -518,20 +531,24 @@ class MainActivity : ComponentActivity() {
         if (uriString.isBlank()) return
         try {
             val treeUri = Uri.parse(uriString)
-            val dir = DocumentFile.fromTreeUri(this, treeUri) ?: run {
+            val rootDir = DocumentFile.fromTreeUri(this, treeUri) ?: run {
                 Log.w("SmartMeter", "Backup: could not open tree URI")
                 return
             }
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val fileName = "${timestamp}_${meterType.entityBase}.jpg"
-            val newFile = dir.createFile("image/jpeg", fileName) ?: run {
+            val subDir = rootDir.findFile(meterType.entityBase)?.takeIf { it.isDirectory }
+                ?: rootDir.createDirectory(meterType.entityBase) ?: run {
+                    Log.w("SmartMeter", "Backup: could not create subfolder ${meterType.entityBase}")
+                    return
+                }
+            val fileName = File(sourcePath).name
+            val newFile = subDir.createFile("image/jpeg", fileName) ?: run {
                 Log.w("SmartMeter", "Backup: could not create file $fileName")
                 return
             }
             contentResolver.openOutputStream(newFile.uri)?.use { out ->
                 File(sourcePath).inputStream().use { it.copyTo(out) }
             }
-            Log.d("SmartMeter", "Backup saved: $fileName")
+            Log.d("SmartMeter", "Backup saved: ${meterType.entityBase}/$fileName")
         } catch (e: Exception) {
             Log.e("SmartMeter", "Backup failed: ${e.message}", e)
         }

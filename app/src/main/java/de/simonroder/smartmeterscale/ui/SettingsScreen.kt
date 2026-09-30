@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import de.simonroder.smartmeterscale.data.MeterType
 import de.simonroder.smartmeterscale.ha.HaPreferences
 import de.simonroder.smartmeterscale.ha.UserPreferences
 
@@ -46,6 +47,7 @@ fun SettingsScreen(
     var mqttUsername by remember { mutableStateOf(haPrefs.mqttUsername) }
     var mqttPassword by remember { mutableStateOf(haPrefs.mqttPassword) }
     var saved by remember { mutableStateOf(false) }
+    var enabledMeterTypes by remember { mutableStateOf(haPrefs.enabledMeterTypes) }
     var users by remember { mutableStateOf(userPrefs.getUsers()) }
     var newUserName by remember { mutableStateOf("") }
 
@@ -97,6 +99,32 @@ fun SettingsScreen(
                                 label = { Text(label) }
                             )
                         }
+                }
+            }
+
+            SettingsSection("Active Meters") {
+                Text(
+                    "Disable meter types you don't use to keep the home screen uncluttered.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+                MeterType.entries.forEach { type ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(type.displayName, style = MaterialTheme.typography.bodyLarge)
+                        Switch(
+                            checked = type.name in enabledMeterTypes,
+                            onCheckedChange = { enabled ->
+                                enabledMeterTypes = if (enabled) enabledMeterTypes + type.name
+                                                  else (enabledMeterTypes - type.name)
+                                    .ifEmpty { enabledMeterTypes } // keep at least one
+                                saved = false
+                            }
+                        )
+                    }
                 }
             }
 
@@ -252,6 +280,7 @@ fun SettingsScreen(
             Button(
                 onClick = {
                     haPrefs.themeMode = themeMode
+                    haPrefs.enabledMeterTypes = enabledMeterTypes
                     haPrefs.baseUrl = baseUrl.trimEnd('/')
                     haPrefs.token = token.trim()
                     haPrefs.backupPath = backupPath.trim()

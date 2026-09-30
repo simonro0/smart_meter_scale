@@ -57,4 +57,18 @@
         </intent>
     </shortcut>
 
+    <shortcut
+        android:shortcutId="shortcut_odometer"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_odometer_short"
+        android:shortcutLongLabel="@string/shortcut_odometer_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="de.simonroder.smartmeterscale"
+            android:targetClass="de.simonroder.smartmeterscale.MainActivity">
+            <extra android:name="SHORTCUT_METER_TYPE" android:value="Odometer" />
+        </intent>
+    </shortcut>
+
 </shortcuts>

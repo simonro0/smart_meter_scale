@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import de.simonroder.smartmeterscale.data.MeterType
 import de.simonroder.smartmeterscale.data.TransmissionRecord
+import de.simonroder.smartmeterscale.ha.HaPreferences
 import de.simonroder.smartmeterscale.ha.TransmissionHistory
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,7 +29,11 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val history = remember { TransmissionHistory(context) }
-    val lastSent = remember { MeterType.entries.associateWith { history.getLast(it) } }
+    val enabledTypes = remember {
+        val enabled = HaPreferences(context).enabledMeterTypes
+        MeterType.entries.filter { it.name in enabled }
+    }
+    val lastSent = remember { enabledTypes.associateWith { history.getLast(it) } }
     var selectedType by remember { mutableStateOf<MeterType?>(null) }
 
     Scaffold(
@@ -68,7 +73,7 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(MeterType.entries) { type ->
+                items(enabledTypes) { type ->
                     MeterTypeCard(
                         type = type,
                         lastRecord = lastSent[type],
@@ -120,6 +125,7 @@ private fun MeterTypeCard(
         MeterType.Gas -> Icons.Default.LocalFireDepartment
         MeterType.Electricity -> Icons.Default.ElectricBolt
         MeterType.Water -> Icons.Default.Water
+        MeterType.Odometer -> Icons.Default.Speed
     }
     val containerColor = MaterialTheme.colorScheme.surfaceVariant
     val contentColor = if (selected) MaterialTheme.colorScheme.primary

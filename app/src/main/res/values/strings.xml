@@ -9,4 +9,6 @@
     <string name="shortcut_electricity_long">Capture Electricity Meter</string>
     <string name="shortcut_water_short">Water</string>
     <string name="shortcut_water_long">Capture Water Meter</string>
+    <string name="shortcut_odometer_short">Odometer</string>
+    <string name="shortcut_odometer_long">Capture Odometer</string>
 </resources>

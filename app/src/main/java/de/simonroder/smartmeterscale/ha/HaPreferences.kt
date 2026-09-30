@@ -1,6 +1,7 @@
 package de.simonroder.smartmeterscale.ha
 
 import android.content.Context
+import de.simonroder.smartmeterscale.data.MeterType
 
 class HaPreferences(context: Context) {
     private val prefs = context.getSharedPreferences("ha_config", Context.MODE_PRIVATE)
@@ -50,6 +51,12 @@ class HaPreferences(context: Context) {
     var themeMode: String
         get() = prefs.getString("theme_mode", "system") ?: "system"
         set(v) = prefs.edit().putString("theme_mode", v).apply()
+
+    // null means "all enabled"; explicit set stored so new types are enabled by default
+    var enabledMeterTypes: Set<String>
+        get() = prefs.getStringSet("enabled_meter_types", null)
+                ?: MeterType.entries.map { it.name }.toSet()
+        set(v) = prefs.edit().putStringSet("enabled_meter_types", v).apply()
 
     fun isConfigured() = baseUrl.isNotBlank() && token.isNotBlank()
 

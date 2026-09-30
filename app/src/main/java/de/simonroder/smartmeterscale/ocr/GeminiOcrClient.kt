@@ -58,6 +58,13 @@ class GeminiOcrClient(private val apiKey: String, private val model: String = "g
         Example format: 12345.6
     """.trimIndent()
 
+    private val odometerPrompt = """
+        This is a vehicle odometer showing total kilometres driven.
+        Read the odometer value. Ignore trip meters or any secondary reading — only the total odometer.
+        Write only the numeric value in km as an integer, nothing else.
+        Example format: 123456
+    """.trimIndent()
+
     private fun systemInstructionFor(meterType: MeterType): String = when (meterType) {
         MeterType.Gas, MeterType.Water ->
             "You are a precise OCR system for reading mechanical meter displays with rolling digit drums. " +
@@ -80,6 +87,7 @@ class GeminiOcrClient(private val apiKey: String, private val model: String = "g
             MeterType.Gas -> gasPrompt
             MeterType.Water -> waterPrompt
             MeterType.Electricity -> electricityPrompt
+            MeterType.Odometer -> odometerPrompt
         }
         val body = buildRequestBody(base64, prompt, systemInstructionFor(meterType))
 
